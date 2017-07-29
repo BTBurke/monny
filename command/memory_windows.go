@@ -1,5 +1,5 @@
-// +build !linux
-package wtf
+// +build windows
+package command
 
 func calculateMemory(pid int) uint64 {
 	return 0

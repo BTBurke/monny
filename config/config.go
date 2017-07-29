@@ -1,14 +1,15 @@
-package wtf
+package config
 
 import (
 	"fmt"
 	"os/exec"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 )
 
-const api string = "https://api.lmkwtf.com"
+const api string = "https://notify.lmkwtf.com"
 
 type Config struct {
 	ID              string
@@ -17,6 +18,9 @@ type Config struct {
 	AlertPeriod     time.Duration
 	NotifyTimeout   time.Duration
 	KillTimeout     time.Duration
+	MemoryWarn      uint64
+	MemoryKill      uint64
+	Daemon          bool
 	Creates         []string
 	StdoutHistory   int
 	StderrHistory   int
@@ -24,24 +28,24 @@ type Config struct {
 	NotifyOnFailure bool
 	Shell           string
 
-	api string
+	url string
 }
 
 type ConfigOption func(c *Config) error
 
-func NewConfig(id string, options ...ConfigOption) (*Config, []error) {
-	c := &Config{
+func New(id string, options ...ConfigOption) (Config, []error) {
+	c := Config{
 		ID:              id,
 		StdoutHistory:   50,
 		StderrHistory:   50,
 		NotifyOnSuccess: true,
 		NotifyOnFailure: true,
-		api:             api,
+		url:             api,
 	}
 
 	var errors []error
 	for _, option := range options {
-		err := option(c)
+		err := option(&c)
 		if err != nil {
 			errors = append(errors, err)
 		}
@@ -55,7 +59,7 @@ func NewConfig(id string, options ...ConfigOption) (*Config, []error) {
 	}
 
 	if len(errors) > 0 {
-		return nil, errors
+		return Config{}, errors
 	}
 	return c, nil
 }
@@ -107,6 +111,61 @@ func NoNotifyOnSuccess() ConfigOption {
 func NoNotifyOnFailure() ConfigOption {
 	return func(c *Config) error {
 		c.NotifyOnFailure = false
+		return nil
+	}
+}
+
+func Daemon() ConfigOption {
+	return func(c *Config) error {
+		c.Daemon = true
+		return nil
+	}
+}
+
+func MemoryWarn(mem string) ConfigOption {
+	return func(c *Config) error {
+		var err error
+		var warn int
+		switch {
+		case strings.HasSuffix(mem, "K"):
+			warn, err = strconv.Atoi(mem[0 : len(mem)-1])
+		case strings.HasSuffix(mem, "M"):
+			warn, err = strconv.Atoi(mem[0 : len(mem)-1])
+			warn = warn * 1000
+		case strings.HasSuffix(mem, "G"):
+			warn, err = strconv.Atoi(mem[0 : len(mem)-1])
+			warn = warn * 1000000
+		default:
+			warn, err = strconv.Atoi(mem)
+		}
+		if err != nil {
+			return fmt.Errorf("could not parse memory warning limit: %s", mem)
+		}
+		c.MemoryWarn = uint64(warn)
+		return nil
+	}
+}
+
+func MemoryKill(mem string) ConfigOption {
+	return func(c *Config) error {
+		var err error
+		var kill int
+		switch {
+		case strings.HasSuffix(mem, "K"):
+			kill, err = strconv.Atoi(mem[0 : len(mem)-1])
+		case strings.HasSuffix(mem, "M"):
+			kill, err = strconv.Atoi(mem[0 : len(mem)-1])
+			kill = kill * 1000
+		case strings.HasSuffix(mem, "G"):
+			kill, err = strconv.Atoi(mem[0 : len(mem)-1])
+			kill = kill * 1000000
+		default:
+			kill, err = strconv.Atoi(mem)
+		}
+		if err != nil {
+			return fmt.Errorf("could not parse memory warning limit: %s", mem)
+		}
+		c.MemoryKill = uint64(kill)
 		return nil
 	}
 }

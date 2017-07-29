@@ -1,5 +1,5 @@
 // +build linux
-package wtf
+package command
 
 import (
 	"bufio"
