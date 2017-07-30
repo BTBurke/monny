@@ -28,7 +28,8 @@ type Config struct {
 	NotifyOnFailure bool
 	Shell           string
 
-	url string
+	url       string
+	comingled []string
 }
 
 type alert struct {
@@ -61,6 +62,10 @@ func newConfig(id string, options ...ConfigOption) (Config, []error) {
 			errors = append(errors, fmt.Errorf("no default shell found, specify path to shell using option --shell"))
 		}
 		c.Shell = shell
+	}
+
+	if len(c.comingled) > 0 {
+		errors = append(errors, fmt.Errorf("unknown options: %s\n\nIf these are command-line options for your process add a blank flag separator (--) between the commands like:\nwtf -c config.yaml -- mycommand.sh --myoption", strings.Join(c.comingled, ",")))
 	}
 
 	if len(errors) > 0 {
@@ -216,7 +221,7 @@ func KillTimeout(timeout string) ConfigOption {
 	return func(c *Config) error {
 		duration, err := time.ParseDuration(timeout)
 		if err != nil {
-			return fmt.Errorf("unrecognized kill timeout duration: %s")
+			return fmt.Errorf("unrecognized kill timeout duration: %s", timeout)
 		}
 		c.KillTimeout = duration
 		return nil
@@ -227,7 +232,7 @@ func NotifyTimeout(timeout string) ConfigOption {
 	return func(c *Config) error {
 		duration, err := time.ParseDuration(timeout)
 		if err != nil {
-			return fmt.Errorf("unrecognized notify timeout duration: %s")
+			return fmt.Errorf("unrecognized notify timeout duration: %s", timeout)
 		}
 		c.NotifyTimeout = duration
 		return nil
@@ -237,6 +242,13 @@ func NotifyTimeout(timeout string) ConfigOption {
 func Creates(filepath string) ConfigOption {
 	return func(c *Config) error {
 		c.Creates = append(c.Creates, filepath)
+		return nil
+	}
+}
+
+func comingledOption(option string) ConfigOption {
+	return func(c *Config) error {
+		c.comingled = append(c.comingled, option)
 		return nil
 	}
 }

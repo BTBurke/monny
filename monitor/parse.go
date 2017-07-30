@@ -3,6 +3,7 @@ package monitor
 import (
 	"fmt"
 	"io/ioutil"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -11,35 +12,42 @@ import (
 	"github.com/spf13/pflag"
 )
 
-func init() {
-	pflag.StringP("config", "c", "", "Use yaml configuration file")
-	pflag.String("alert", "", "Creates a notification if this string appears in the output.  Regex OK.")
-	pflag.String("alert-json", "", "Creates a notification if this text appears in the JSON output.  Accepts the field and a regular expression or simple text separated by a colon (e.g. field:value).  Nested JSON structures are accessed using a flattened path with a dot (e.g. field.nested:value).")
-	pflag.Int("stdout-history", 50, "Number of lines of stdout to send with the report.")
-	pflag.Int("stderr-history", 50, "Number of lines of stderr to send with the report.")
-	pflag.Bool("no-notify-on-success", false, "Do not send a report on succesful completion of this process.")
-	pflag.Bool("no-notify-on-failure", false, "Do not send a notification on failure.")
-	pflag.Bool("daemon", false, "Designate this process as a daemon or long-running process. Any notifications triggered will be sent immediately instead of waiting for the process to finish.")
-	pflag.String("memory-warn", "", "Send a notification when memory use exceeds the value.  Accepts integers ending in K, M, G.  Example: 100M")
-	pflag.String("memory-kill", "", "Kill the process and send a notification when memory use exceeds the value.  Accepts integers ending in K, M, G.  Example: 100M")
-	pflag.Duration("timeout-warn", time.Duration(0), "Send a notification if process duration exceeds value (e.g., 32m).  Accepts values in us, s, m, h.")
-	pflag.Duration("timeout-kill", time.Duration(0), "Kill process and send a notification if process duration exceeds value (e.g., 32m).  Accepts values in us, s, m, h.")
-	pflag.String("creates", "", "Send notification if file is not created after end of process")
-}
-
 type options struct {
 	options []ConfigOption
 }
 
-func ParseCommandLine() {
+func ParseCommandLine() ([]string, []ConfigOption) {
 	options := options{}
-	pflag.ParseAll(parseFlag(&options))
-	fmt.Printf("Found %d options", len(options.options))
+
+	pf := pflag.NewFlagSet("wtf", pflag.ExitOnError)
+	pf.Usage = func() {
+		fmt.Println("Usage of wtf:")
+		fmt.Printf("\n%s", pf.FlagUsagesWrapped(10))
+		fmt.Printf("\n\nFor unknown flag errors, add an empty flag separator (--) between the flags for wtf and your command.  Example:\n\nwtf -c config.yml -- mycommand --otherflag\n")
+	}
+
+	pf.StringP("config", "c", "", "Use yaml configuration file")
+	pf.String("alert", "", "Creates a notification if this string appears in the output.  Regex OK.")
+	pf.String("alert-json", "", "Creates a notification if this text appears in the JSON output.  Accepts the field and a regular expression or simple text separated by a colon (e.g. field:value).  Nested JSON structures are accessed using a flattened path with a dot (e.g. field.nested:value).")
+	pf.Int("stdout-history", 50, "Number of lines of stdout to send with the report.")
+	pf.Int("stderr-history", 50, "Number of lines of stderr to send with the report.")
+	pf.Bool("no-notify-on-success", false, "Do not send a report on succesful completion of this process.")
+	pf.Bool("no-notify-on-failure", false, "Do not send a notification on failure.")
+	pf.Bool("daemon", false, "Designate this process as a daemon or long-running process. Any notifications triggered will be sent immediately instead of waiting for the process to finish.")
+	pf.String("memory-warn", "", "Send a notification when memory use exceeds the value.  Accepts integers ending in K, M, G.  Example: 100M")
+	pf.String("memory-kill", "", "Kill the process and send a notification when memory use exceeds the value.  Accepts integers ending in K, M, G.  Example: 100M")
+	pf.Duration("timeout-warn", time.Duration(0), "Send a notification if process duration exceeds value (e.g., 32m).  Accepts values in us, s, m, h.")
+	pf.Duration("timeout-kill", time.Duration(0), "Kill process and send a notification if process duration exceeds value (e.g., 32m).  Accepts values in us, s, m, h.")
+	pf.String("creates", "", "Send notification if file is not created after end of process")
+
+	pf.ParseAll(os.Args[1:], parseFlag(&options))
+	fmt.Printf("Found %d options\n", len(options.options))
+	return pf.Args(), options.options
 }
 
 func parseFlag(o *options) func(*pflag.Flag, string) error {
 	return func(flag *pflag.Flag, value string) error {
-		fmt.Printf("Flag: %s Value: %s", flag.Name, value)
+		fmt.Printf("Flag: %s Value: %s\n", flag.Name, value)
 		switch flag.Name {
 		case "config":
 			opts, err := parseFromFile(value)
@@ -89,7 +97,7 @@ func handleOption(name string, value string) (ConfigOption, error) {
 	case "creates":
 		return Creates(value), nil
 	default:
-		return nil, fmt.Errorf("unknown option: %s", name)
+		return comingledOption(value), nil
 	}
 }
 
@@ -105,13 +113,12 @@ func parseFromFile(fpath string) ([]ConfigOption, error) {
 		return options, err
 	}
 	for k, v := range cfg {
-		var opt ConfigOption
-		var err error
+
 		switch v.(type) {
 		case string:
-			opt, err = handleOption(k, v.(string))
+			opt, err := handleOption(k, v.(string))
 			if err != nil {
-				return options, nil
+				return options, err
 			}
 			options = append(options, opt)
 		case int:

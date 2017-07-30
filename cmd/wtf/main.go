@@ -3,17 +3,22 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/BTBurke/wtf/monitor"
 )
 
 func main() {
 
-	monitor.ParseCommandLine()
+	usercmd, opts := monitor.ParseCommandLine()
+	fmt.Printf("Usercmd: %s\n", strings.Join(usercmd, " "))
 
-	cmd, err := monitor.New(os.Args[1:], "test", monitor.JSONAlert("labels.responseCode", "404"))
+	cmd, err := monitor.New(usercmd, "test", opts...)
 	if err != nil {
-		fmt.Println("Error in config: ", err)
+		fmt.Println("Error in config:")
+		for _, e := range err {
+			fmt.Println(e)
+		}
 		os.Exit(1)
 	}
 
