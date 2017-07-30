@@ -4,17 +4,18 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/BTBurke/wtf/command"
-	"github.com/BTBurke/wtf/config"
+	"github.com/BTBurke/wtf/monitor"
 )
 
 func main() {
-	cfg, err := config.New("test", config.Alert("vscode"), config.Daemon())
+
+	monitor.ParseCommandLine()
+
+	cmd, err := monitor.New(os.Args[1:], "test", monitor.JSONAlert("labels.responseCode", "404"))
 	if err != nil {
 		fmt.Println("Error in config: ", err)
 		os.Exit(1)
 	}
-	cmd := command.New([]string{"cat", "Gopkg.toml | cat \"test: \""}, cfg)
 
 	if err := cmd.Exec(); err != nil {
 		fmt.Println("Error while run: ", err)

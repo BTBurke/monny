@@ -1,4 +1,4 @@
-package config
+package monitor
 
 import (
 	"fmt"
@@ -13,7 +13,7 @@ const api string = "https://notify.lmkwtf.com"
 
 type Config struct {
 	ID              string
-	Alert           []*regexp.Regexp
+	Alerts          []alert
 	AlertQuantity   int
 	AlertPeriod     time.Duration
 	NotifyTimeout   time.Duration
@@ -31,9 +31,14 @@ type Config struct {
 	url string
 }
 
+type alert struct {
+	Field string
+	Regex *regexp.Regexp
+}
+
 type ConfigOption func(c *Config) error
 
-func New(id string, options ...ConfigOption) (Config, []error) {
+func newConfig(id string, options ...ConfigOption) (Config, []error) {
 	c := Config{
 		ID:              id,
 		StdoutHistory:   50,
@@ -67,7 +72,18 @@ func New(id string, options ...ConfigOption) (Config, []error) {
 func Alert(regex string) ConfigOption {
 	return func(c *Config) error {
 		reg, err := regexp.Compile(regex)
-		c.Alert = append(c.Alert, reg)
+		c.Alerts = append(c.Alerts, alert{Regex: reg})
+		return err
+	}
+}
+
+func JSONAlert(field string, regex string) ConfigOption {
+	return func(c *Config) error {
+		reg, err := regexp.Compile(regex)
+		c.Alerts = append(c.Alerts, alert{
+			Field: field,
+			Regex: reg,
+		})
 		return err
 	}
 }
@@ -94,9 +110,24 @@ func AlertPeriod(period string) ConfigOption {
 	}
 }
 
-func StdoutHistory(h int) ConfigOption {
+func StdoutHistory(h string) ConfigOption {
 	return func(c *Config) error {
-		c.StdoutHistory = h
+		hist, err := strconv.Atoi(h)
+		if err != nil {
+			return err
+		}
+		c.StdoutHistory = hist
+		return nil
+	}
+}
+
+func StderrHistory(h string) ConfigOption {
+	return func(c *Config) error {
+		hist, err := strconv.Atoi(h)
+		if err != nil {
+			return err
+		}
+		c.StderrHistory = hist
 		return nil
 	}
 }

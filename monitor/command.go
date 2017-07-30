@@ -1,21 +1,23 @@
-package command
+package monitor
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/BTBurke/wtf/config"
 	"github.com/BTBurke/wtf/constants"
 )
 
 type Command struct {
-	Config        config.Config
+	Config        Config
 	UserCommand   []string
 	Stdout        []string
 	Stderr        []string
@@ -49,14 +51,19 @@ type AlertMatch struct {
 	Line string
 }
 
-func New(usercmd []string, cfg config.Config) *Command {
+func New(usercmd []string, id string, options ...ConfigOption) (*Command, []error) {
+	cfg, err := newConfig(id, options...)
+	if err != nil {
+		return nil, err
+	}
 	return &Command{
 		Config:      cfg,
 		UserCommand: usercmd,
-	}
+	}, nil
 }
 
 func (c *Command) Exec() error {
+	fmt.Println("Starting...")
 	var cmd *exec.Cmd
 	switch len(c.UserCommand) {
 	case 1:
@@ -151,35 +158,69 @@ func (c *Command) Exec() error {
 }
 
 // checkAlert finds a regular expression match to a line from either Stdout or Stderr.
-func (c *Command) checkAlert(line []byte) {
-	for _, reg := range c.Config.Alert {
-		found := reg.Find(line)
+func checkAlert(line []byte, alerts []alert) []AlertMatch {
+	var matches []AlertMatch
+	for _, alert := range alerts {
+		var text []byte
+		switch {
+		case len(alert.Field) > 0:
+			text = extractTextFromJSON(line, alert.Field)
+		default:
+			text = line
+		}
+
+		found := alert.Regex.Find(text)
 		if found != nil {
-			switch c.Config.Daemon {
-			case false:
-				c.mutex.Lock()
-				defer c.mutex.Unlock()
-				c.AlertMatches = append(c.AlertMatches, AlertMatch{
-					Time: time.Now(),
-					Line: string(line),
-				})
-			default:
-				// TODO: in the alert rate case, should save intermediate results, then clear
-				// once the notification is sent
-				// TODO: for daemon case, send notification only once every 30 mins, saving intermediate
-				// results, then clear
-				fmt.Println("TODO: send alert notification in daemon case")
-			}
+			matches = append(matches, AlertMatch{
+				Time: time.Now(),
+				Line: string(line),
+			})
+			// TODO: in the alert rate case, should save intermediate results, then clear
+			// once the notification is sent
+			// TODO: for daemon case, send notification only once every 30 mins, saving intermediate
+			// results, then clear
 		}
 	}
-	return
+	return matches
+}
+
+func extractTextFromJSON(raw []byte, field string) []byte {
+	fieldPath := strings.Split(field, ".")
+	switch {
+	case len(fieldPath) > 1:
+		res := make(map[string]json.RawMessage)
+		if err := json.Unmarshal(raw, &res); err != nil {
+			return []byte{}
+		}
+		return extractTextFromJSON(res[fieldPath[0]], strings.Join(fieldPath[1:], "."))
+	default:
+		res := make(map[string]interface{})
+		if err := json.Unmarshal(raw, &res); err != nil {
+			return []byte{}
+		}
+		value := res[field]
+		switch value.(type) {
+		case string:
+			return []byte(value.(string))
+		case float32:
+			return []byte(fmt.Sprintf("%f", value.(float32)))
+		case float64:
+			return []byte(fmt.Sprintf("%f", value.(float64)))
+		case bool:
+			return []byte(fmt.Sprintf("%v", value.(bool)))
+		case int:
+			return []byte(strconv.Itoa(value.(int)))
+		default:
+			return []byte{}
+		}
+	}
 }
 
 func (c *Command) processStdout(line []byte) {
-	c.checkAlert(line)
+	matches := checkAlert(line, c.Config.Alerts)
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-
+	c.AlertMatches = append(c.AlertMatches, matches...)
 	history := len(c.Stdout)
 	switch {
 	case history >= c.Config.StdoutHistory:
@@ -191,10 +232,10 @@ func (c *Command) processStdout(line []byte) {
 }
 
 func (c *Command) processStderr(line []byte) {
-	c.checkAlert(line)
+	matches := checkAlert(line, c.Config.Alerts)
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-
+	c.AlertMatches = append(c.AlertMatches, matches...)
 	history := len(c.Stderr)
 	switch {
 	case history >= c.Config.StderrHistory:

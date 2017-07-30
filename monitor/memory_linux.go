@@ -1,5 +1,5 @@
 // +build linux
-package command
+package monitor
 
 import (
 	"bufio"
