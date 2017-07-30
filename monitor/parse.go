@@ -23,15 +23,15 @@ func ParseCommandLine() ([]string, []ConfigOption) {
 	pf.Usage = func() {
 		fmt.Printf("Usage of wtf:\nwtf -i <identifier> <options> mycommand\nwtf -i <identifier> <options> -- mycommand <mycommand-options>\n")
 		fmt.Printf("\n%s", pf.FlagUsagesWrapped(10))
-		fmt.Printf("\n\nFor unknown flag errors, add an empty flag separator (--) between the flags for wtf and your command.  Example:\n\nwtf -c config.yml -- mycommand --otherflag\n")
+		fmt.Printf("\n\nFor unknown flag errors, add an empty flag separator (--) between the flags for wtf and your command.  Example:\n\nwtf -i id -c config.yml -- mycommand --otherflag\n")
 	}
 
 	pf.StringP("id", "i", "", "Identifier for this monitor (required)")
 	pf.StringP("config", "c", "", "Use yaml configuration file")
 	pf.String("alert", "", "Creates a notification if this string appears in the output.  Regex OK.")
 	pf.String("alert-json", "", "Creates a notification if this text appears in the JSON output.  Accepts the field and a regular expression or simple text separated by a colon (e.g. field:value).  Nested JSON structures are accessed using a flattened path with a dot (e.g. field.nested:value).")
-	pf.Int("stdout-history", 50, "Number of lines of stdout to send with the report.")
-	pf.Int("stderr-history", 50, "Number of lines of stderr to send with the report.")
+	pf.Int("stdout-history", 30, "Number of lines of stdout to send with the report.")
+	pf.Int("stderr-history", 30, "Number of lines of stderr to send with the report.")
 	pf.Bool("no-notify-on-success", false, "Do not send a report on succesful completion of this process.")
 	pf.Bool("no-notify-on-failure", false, "Do not send a notification on failure.")
 	pf.Bool("daemon", false, "Designate this process as a daemon or long-running process. Any notifications triggered will be sent immediately instead of waiting for the process to finish.")
@@ -47,7 +47,6 @@ func ParseCommandLine() ([]string, []ConfigOption) {
 
 func parseFlag(o *options) func(*pflag.Flag, string) error {
 	return func(flag *pflag.Flag, value string) error {
-		fmt.Printf("Flag: %s Value: %s\n", flag.Name, value)
 		switch flag.Name {
 		case "config":
 			opts, err := parseFromFile(value)
@@ -68,6 +67,8 @@ func parseFlag(o *options) func(*pflag.Flag, string) error {
 
 func handleOption(name string, value string) (ConfigOption, error) {
 	switch name {
+	case "id":
+		return ID(value), nil
 	case "alert":
 		return Alert(value), nil
 	case "alert-json":

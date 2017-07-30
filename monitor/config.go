@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -16,6 +17,7 @@ type Config struct {
 	Alerts          []alert
 	AlertQuantity   int
 	AlertPeriod     time.Duration
+	Hostname        string
 	NotifyTimeout   time.Duration
 	KillTimeout     time.Duration
 	MemoryWarn      uint64
@@ -39,13 +41,17 @@ type alert struct {
 
 type ConfigOption func(c *Config) error
 
-func newConfig(id string, options ...ConfigOption) (Config, []error) {
+func newConfig(options ...ConfigOption) (Config, []error) {
+	host, err := os.Hostname()
+	if err != nil {
+		host = ""
+	}
 	c := Config{
-		ID:              id,
-		StdoutHistory:   50,
-		StderrHistory:   50,
+		StdoutHistory:   30,
+		StderrHistory:   30,
 		NotifyOnSuccess: true,
 		NotifyOnFailure: true,
+		Hostname:        host,
 		url:             api,
 	}
 
@@ -63,15 +69,24 @@ func newConfig(id string, options ...ConfigOption) (Config, []error) {
 		}
 		c.Shell = shell
 	}
-
 	if len(c.comingled) > 0 {
 		errors = append(errors, fmt.Errorf("unknown options: %s\n\nIf these are command-line options for your process add a blank flag separator (--) between the commands like:\nwtf -c config.yaml -- mycommand.sh --myoption", strings.Join(c.comingled, ",")))
+	}
+	if len(c.ID) == 0 {
+		errors = append(errors, fmt.Errorf("id is required, use wtf -i <id>; new ids are created with wtfctl create"))
 	}
 
 	if len(errors) > 0 {
 		return Config{}, errors
 	}
 	return c, nil
+}
+
+func ID(id string) ConfigOption {
+	return func(c *Config) error {
+		c.ID = id
+		return nil
+	}
 }
 
 func Alert(regex string) ConfigOption {

@@ -14,9 +14,11 @@ type ReportReason int
 const (
 	Success ReportReason = iota + 1
 	Failure
+	Alert
 	AlertRate
 	MemoryWarning
 	TimeWarning
 	FileNotCreated
 	Killed
+	Start
 )

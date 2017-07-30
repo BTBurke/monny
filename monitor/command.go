@@ -51,9 +51,9 @@ type AlertMatch struct {
 	Line string
 }
 
-func New(usercmd []string, id string, options ...ConfigOption) (*Command, []error) {
-	cfg, err := newConfig(id, options...)
-	if err != nil {
+func New(usercmd []string, options ...ConfigOption) (*Command, []error) {
+	cfg, err := newConfig(options...)
+	if len(err) > 0 {
 		return nil, err
 	}
 	return &Command{

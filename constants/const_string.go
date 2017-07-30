@@ -16,9 +16,9 @@ func (i KillReason) String() string {
 	return _KillReason_name[_KillReason_index[i]:_KillReason_index[i+1]]
 }
 
-const _ReportReason_name = "SuccessFailureAlertRateMemoryWarningTimeWarningFileNotCreatedKilled"
+const _ReportReason_name = "SuccessFailureAlertAlertRateMemoryWarningTimeWarningFileNotCreatedKilledStart"
 
-var _ReportReason_index = [...]uint8{0, 7, 14, 23, 36, 47, 61, 67}
+var _ReportReason_index = [...]uint8{0, 7, 14, 19, 28, 41, 52, 66, 72, 77}
 
 func (i ReportReason) String() string {
 	i -= 1
