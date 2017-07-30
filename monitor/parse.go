@@ -21,11 +21,12 @@ func ParseCommandLine() ([]string, []ConfigOption) {
 
 	pf := pflag.NewFlagSet("wtf", pflag.ExitOnError)
 	pf.Usage = func() {
-		fmt.Println("Usage of wtf:")
+		fmt.Printf("Usage of wtf:\nwtf -i <identifier> <options> mycommand\nwtf -i <identifier> <options> -- mycommand <mycommand-options>\n")
 		fmt.Printf("\n%s", pf.FlagUsagesWrapped(10))
 		fmt.Printf("\n\nFor unknown flag errors, add an empty flag separator (--) between the flags for wtf and your command.  Example:\n\nwtf -c config.yml -- mycommand --otherflag\n")
 	}
 
+	pf.StringP("id", "i", "", "Identifier for this monitor (required)")
 	pf.StringP("config", "c", "", "Use yaml configuration file")
 	pf.String("alert", "", "Creates a notification if this string appears in the output.  Regex OK.")
 	pf.String("alert-json", "", "Creates a notification if this text appears in the JSON output.  Accepts the field and a regular expression or simple text separated by a colon (e.g. field:value).  Nested JSON structures are accessed using a flattened path with a dot (e.g. field.nested:value).")
@@ -41,7 +42,6 @@ func ParseCommandLine() ([]string, []ConfigOption) {
 	pf.String("creates", "", "Send notification if file is not created after end of process")
 
 	pf.ParseAll(os.Args[1:], parseFlag(&options))
-	fmt.Printf("Found %d options\n", len(options.options))
 	return pf.Args(), options.options
 }
 
