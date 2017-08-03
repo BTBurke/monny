@@ -10,7 +10,8 @@ import (
 	"time"
 )
 
-const api string = "https://notify.lmkwtf.com"
+const api string = "https://report.lmkwtf.com"
+const port string = "443"
 
 type Config struct {
 	ID              string
@@ -30,7 +31,9 @@ type Config struct {
 	NotifyOnFailure bool
 	Shell           string
 
-	url       string
+	host      string
+	port      string
+	useTLS    bool
 	comingled []string
 }
 
@@ -52,7 +55,9 @@ func newConfig(options ...ConfigOption) (Config, []error) {
 		NotifyOnSuccess: true,
 		NotifyOnFailure: true,
 		Hostname:        host,
-		url:             api,
+		host:            api,
+		port:            port,
+		useTLS:          true,
 	}
 
 	var errors []error
@@ -257,6 +262,25 @@ func NotifyTimeout(timeout string) ConfigOption {
 func Creates(filepath string) ConfigOption {
 	return func(c *Config) error {
 		c.Creates = append(c.Creates, filepath)
+		return nil
+	}
+}
+
+func Host(pathWithPort string) ConfigOption {
+	return func(c *Config) error {
+		h := strings.Split(pathWithPort, ":")
+		if len(h) != 2 {
+			return fmt.Errorf("unknown host, use host:port")
+		}
+		c.host = h[0]
+		c.port = h[1]
+		return nil
+	}
+}
+
+func Insecure() ConfigOption {
+	return func(c *Config) error {
+		c.useTLS = false
 		return nil
 	}
 }

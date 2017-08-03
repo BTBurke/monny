@@ -40,7 +40,8 @@ func ParseCommandLine() ([]string, []ConfigOption) {
 	pf.Duration("timeout-warn", time.Duration(0), "Send a notification if process duration exceeds value (e.g., 32m).  Accepts values in us, s, m, h.")
 	pf.Duration("timeout-kill", time.Duration(0), "Kill process and send a notification if process duration exceeds value (e.g., 32m).  Accepts values in us, s, m, h.")
 	pf.String("creates", "", "Send notification if file is not created after end of process")
-
+	pf.String("host", "", "Host to which to send the reports as host:port")
+	pf.Bool("insecure", false, "Do not use TLS to secure connection for reports")
 	pf.ParseAll(os.Args[1:], parseFlag(&options))
 	return pf.Args(), options.options
 }
@@ -97,6 +98,10 @@ func handleOption(name string, value string) (ConfigOption, error) {
 		return KillTimeout(value), nil
 	case "creates":
 		return Creates(value), nil
+	case "host":
+		return Host(value), nil
+	case "insecure":
+		return Insecure(), nil
 	default:
 		return comingledOption(value), nil
 	}

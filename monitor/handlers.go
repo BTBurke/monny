@@ -7,23 +7,23 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/BTBurke/wtf/constants"
+	"github.com/BTBurke/wtf/proto"
 )
 
 func handleFinished(c *Command, cmd *exec.Cmd) error {
 	switch cmd.ProcessState.Success() {
 	case true:
 		c.Success = true
-		c.ReportReason = constants.Success
+		c.ReportReason = proto.Success
 		c.ExitCodeValid = true
 	default:
 		sysinfo, ok := cmd.ProcessState.Sys().(syscall.WaitStatus)
 		if ok {
-			c.ExitCode = sysinfo.ExitStatus()
+			c.ExitCode = int32(sysinfo.ExitStatus())
 			c.ExitCodeValid = true
 		}
 		c.Success = false
-		c.ReportReason = constants.Failure
+		c.ReportReason = proto.Failure
 	}
 	handleFileCreation(c)
 
@@ -36,7 +36,7 @@ func handleFinished(c *Command, cmd *exec.Cmd) error {
 	for _, match := range c.AlertMatches {
 		fmt.Printf("Match: %s\n", match.Line)
 	}
-	for _, e := range c.Errors {
+	for _, e := range c.Messages {
 		fmt.Printf("Error: %s\n", e)
 	}
 	return nil
@@ -49,8 +49,8 @@ func handleSignal(c *Command, cmd *exec.Cmd, sig os.Signal) error {
 	c.Finish = time.Now()
 	c.Duration = c.Start.Sub(c.Finish)
 	c.Killed = true
-	c.KillReason = constants.Signal
-	c.ReportReason = constants.Killed
+	c.KillReason = proto.Signal
+	c.ReportReason = proto.Killed
 	if err := cmd.Process.Signal(sig); err != nil {
 		return err
 	}
@@ -63,10 +63,10 @@ func handleTimeout(c *Command, cmd *exec.Cmd) error {
 	defer c.mutex.Unlock()
 
 	c.Killed = true
-	c.KillReason = constants.Timeout
+	c.KillReason = proto.Timeout
 	c.Finish = time.Now()
 	c.Duration = c.Start.Sub(c.Finish)
-	c.ReportReason = constants.Killed
+	c.ReportReason = proto.Killed
 	if err := cmd.Process.Signal(os.Kill); err != nil {
 		return err
 	}
@@ -107,7 +107,7 @@ func killOnHighMemory(c *Command, cmd *exec.Cmd) error {
 	defer c.mutex.Unlock()
 
 	c.Killed = true
-	c.KillReason = constants.Memory
+	c.KillReason = proto.Memory
 	c.Finish = time.Now()
 	c.Duration = c.Start.Sub(c.Finish)
 	if err := cmd.Process.Kill(); err != nil {
@@ -122,9 +122,9 @@ func handleFileCreation(c *Command) {
 		finfo, err := os.Stat(f)
 		switch {
 		case os.IsNotExist(err):
-			c.ReportReason = constants.FileNotCreated
+			c.ReportReason = proto.FileNotCreated
 			c.Success = false
-			c.Errors = append(c.Errors, fmt.Sprintf("file not created: %s", f))
+			c.Messages = append(c.Messages, fmt.Sprintf("file not created: %s", f))
 		case err == nil:
 			c.Created = append(c.Created, File{
 				Path: finfo.Name(),

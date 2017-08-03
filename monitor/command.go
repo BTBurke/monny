@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/BTBurke/wtf/constants"
+	"github.com/BTBurke/wtf/proto"
 )
 
 type Command struct {
@@ -24,16 +24,16 @@ type Command struct {
 	Success       bool
 	AlertMatches  []AlertMatch
 	Killed        bool
-	KillReason    constants.KillReason
+	KillReason    proto.KillReason
 	Created       []File
 	MaxMemory     uint64
-	ReportReason  constants.ReportReason
+	ReportReason  proto.ReportReason
 	Start         time.Time
 	Finish        time.Time
 	Duration      time.Duration
-	ExitCode      int
+	ExitCode      int32
 	ExitCodeValid bool
-	Errors        []string
+	Messages      []string
 
 	mutex         sync.Mutex
 	memWarnSent   bool
@@ -47,8 +47,9 @@ type File struct {
 }
 
 type AlertMatch struct {
-	Time time.Time
-	Line string
+	Time  time.Time
+	Line  string
+	Index [][]int
 }
 
 func New(usercmd []string, options ...ConfigOption) (*Command, []error) {
@@ -157,6 +158,31 @@ func (c *Command) Exec() error {
 	}
 }
 
+// SendReport will send a report based on the current run status
+// of the command.  This is safe to call in a go routine to send
+// in the background.  It will attempt to send a report for 1hr
+// using exponential backoff if there is a problem.
+func (c *Command) SendReport() {
+	c.mutex.Lock()
+	report := NewReport(c)
+	c.mutex.Unlock()
+
+	result := make(chan error, 1)
+	cancel := make(chan bool, 1)
+	timeout := time.After(1 * time.Hour)
+
+	go report.Send(result, cancel)
+
+	select {
+	case err := <-result:
+		fmt.Println(err)
+	case <-timeout:
+		cancel <- true
+	}
+	close(result)
+	close(cancel)
+}
+
 // checkAlert finds a regular expression match to a line from either Stdout or Stderr.
 func checkAlert(line []byte, alerts []alert) []AlertMatch {
 	var matches []AlertMatch
@@ -169,11 +195,12 @@ func checkAlert(line []byte, alerts []alert) []AlertMatch {
 			text = line
 		}
 
-		found := alert.Regex.Find(text)
+		found := alert.Regex.FindAllIndex(text, -1)
 		if found != nil {
 			matches = append(matches, AlertMatch{
-				Time: time.Now(),
-				Line: string(line),
+				Time:  time.Now(),
+				Line:  string(line),
+				Index: found,
 			})
 			// TODO: in the alert rate case, should save intermediate results, then clear
 			// once the notification is sent

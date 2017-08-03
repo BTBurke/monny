@@ -2,10 +2,22 @@
 
 
 [[projects]]
+  name = "github.com/cenkalti/backoff"
+  packages = ["."]
+  revision = "32cd0c5b3aef12c76ed64aaf678f6c79736be7dc"
+  version = "v1.0.0"
+
+[[projects]]
   branch = "v2"
   name = "github.com/go-yaml/yaml"
   packages = ["."]
   revision = "25c4ec802a7d637f88d584ab26798e94ad14c13b"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/golang/protobuf"
+  packages = ["proto","ptypes/any"]
+  revision = "748d386b5c1ea99658fd69fe9f03991ce86a90c1"
 
 [[projects]]
   name = "github.com/spf13/pflag"
@@ -13,9 +25,33 @@
   revision = "e57e3eeb33f795204c1ca35f56c44f83227c6e66"
   version = "v1.0.0"
 
+[[projects]]
+  branch = "master"
+  name = "golang.org/x/net"
+  packages = ["context","http2","http2/hpack","idna","internal/timeseries","lex/httplex","trace"]
+  revision = "f5079bd7f6f74e23c4d65efa0f4ce14cbd6a3c0f"
+
+[[projects]]
+  branch = "master"
+  name = "golang.org/x/text"
+  packages = ["internal/gen","internal/triegen","internal/ucd","secure/bidirule","transform","unicode/bidi","unicode/cldr","unicode/norm","unicode/rangetable"]
+  revision = "3bd178b88a8180be2df394a1fbb81313916f0e7b"
+
+[[projects]]
+  branch = "master"
+  name = "google.golang.org/genproto"
+  packages = ["googleapis/rpc/status"]
+  revision = "09f6ed296fc66555a25fe4ce95173148778dfa85"
+
+[[projects]]
+  name = "google.golang.org/grpc"
+  packages = [".","codes","credentials","grpclb/grpc_lb_v1","grpclog","internal","keepalive","metadata","naming","peer","stats","status","tap","transport"]
+  revision = "b8669c35455183da6d5c474ea6e72fbf55183274"
+  version = "v1.5.1"
+
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "2dbbb538d7c85bfa296390a56ac646b613751cca7edf9a7c191488e27aa65942"
+  inputs-digest = "6e6117a8e97c556a4ffb956a0481bcd62e1d175200d34b7e507ab89777bc039c"
   solver-name = "gps-cdcl"
   solver-version = 1
