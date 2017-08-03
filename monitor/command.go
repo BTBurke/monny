@@ -36,9 +36,11 @@ type Command struct {
 	ExitCodeValid bool
 	Messages      []string
 
-	mutex          sync.Mutex
-	memWarnSent    bool
-	reportLastSent time.Time
+	mutex        sync.Mutex
+	memWarnSent  bool
+	timeWarnSent bool
+	handler      ProcessHandlers
+	report       ReportSender
 }
 
 // File represents an artifact that is produced by the process.
@@ -64,11 +66,15 @@ func New(usercmd []string, options ...ConfigOption) (*Command, []error) {
 	return &Command{
 		Config:      cfg,
 		UserCommand: usercmd,
+		handler:     handler{},
+		report: &Report{
+			Host: cfg.host,
+			Port: cfg.port,
+		},
 	}, nil
 }
 
 func (c *Command) Exec() error {
-	fmt.Println("Starting...")
 	var cmd *exec.Cmd
 	switch len(c.UserCommand) {
 	case 1:
@@ -147,16 +153,16 @@ func (c *Command) Exec() error {
 	for {
 		select {
 		case <-runFinished:
-			return handleFinished(c, cmd)
+			return c.handler.Finished(c, cmd)
 		case sig := <-signals:
-			return handleSignal(c, cmd, sig)
+			return c.handler.Signal(c, cmd, sig)
 		case <-timeout:
-			return handleTimeout(c, cmd)
+			return c.handler.Timeout(c, cmd)
 		case <-timenotify:
-			handleTimeWarning(c)
+			c.handler.TimeWarning(c)
 		case <-profileMemory:
-			if err := checkMemory(c, cmd.Process.Pid); err != nil {
-				return killOnHighMemory(c, cmd)
+			if err := c.handler.CheckMemory(c, cmd.Process.Pid); err != nil {
+				return c.handler.KillOnHighMemory(c, cmd)
 			}
 		}
 	}
@@ -166,16 +172,16 @@ func (c *Command) Exec() error {
 // of the command.  This is safe to call in a go routine to send
 // in the background.  It will attempt to send a report for 1hr
 // using exponential backoff if there is a problem.
-func (c *Command) SendReport() {
+func (c *Command) SendReport(reason proto.ReportReason) {
 	c.mutex.Lock()
-	report := NewReport(c)
+	c.report.Create(c, reason)
 	c.mutex.Unlock()
 
 	result := make(chan error, 1)
 	cancel := make(chan bool, 1)
 	timeout := time.After(1 * time.Hour)
 
-	go report.Send(result, cancel)
+	go c.report.Send(result, cancel)
 
 	select {
 	case err := <-result:

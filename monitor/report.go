@@ -10,15 +10,22 @@ import (
 	"time"
 
 	"github.com/BTBurke/wtf/pb"
+	"github.com/BTBurke/wtf/proto"
 	"github.com/cenkalti/backoff"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
 
+// ReportSender is an interface for sending reports
+type ReportSender interface {
+	Create(c *Command, reason proto.ReportReason, opts ...grpc.DialOption)
+	Send(result chan error, cancel chan bool)
+}
+
 // reportFromCommand converts a Command to a pb.Report, doing
 // some conversion to be compatible with PB types and storage
 // schema on the backend
-func reportFromCommand(c *Command) pb.Report {
+func reportFromCommand(c *Command, reason proto.ReportReason) pb.Report {
 	return pb.Report{
 		Id:            c.Config.ID,
 		Hostname:      c.Config.Hostname,
@@ -29,7 +36,7 @@ func reportFromCommand(c *Command) pb.Report {
 		Killed:        c.Killed,
 		KillReason:    pb.KillReason(c.KillReason),
 		Created:       marshalCreated(c.Created),
-		ReportReason:  pb.ReportReason(c.ReportReason),
+		ReportReason:  pb.ReportReason(reason),
 		Start:         c.Start.Unix(),
 		Finish:        c.Finish.Unix(),
 		Duration:      c.Duration.String(),
@@ -43,41 +50,36 @@ func reportFromCommand(c *Command) pb.Report {
 	}
 }
 
-type report struct {
-	host   string
-	port   string
-	report pb.Report
-	opts   []grpc.DialOption
+// Report is a wrapper for sending a report via GRPC. See pb.Report for details.
+type Report struct {
+	Host  string
+	Port  string
+	Proto pb.Report
+	Opts  []grpc.DialOption
 }
 
-// NewReport prepares a new report based on the current status of
-// the command.
-func NewReport(c *Command, opts ...grpc.DialOption) *report {
-	r := report{
-		host:   c.Config.host,
-		port:   c.Config.port,
-		report: reportFromCommand(c),
-		opts:   opts,
-	}
+// Create prepares a new report based on the current status of the command.
+func (r *Report) Create(c *Command, reason proto.ReportReason, opts ...grpc.DialOption) {
+	r.Proto = reportFromCommand(c, reason)
 	if c.Config.useTLS {
-		r.opts = append(r.opts, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{})))
+		r.Opts = append(r.Opts, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{})))
 	}
-	return &r
+	return
 }
 
 // Send will transmit a report to the notification server using a go routine.
 // Errors will cause an exponential backoff until the call is successful or a timeout
 // is received from the parent.
-func (r *report) Send(result chan error, cancel chan bool) {
+func (r *Report) Send(result chan error, cancel chan bool) {
 	send := func() error {
-		conn, err := grpc.Dial(net.JoinHostPort(r.host, r.port), r.opts...)
+		conn, err := grpc.Dial(net.JoinHostPort(r.Host, r.Port), r.Opts...)
 		if err != nil {
 			return err
 		}
 		defer conn.Close()
 
 		client := pb.NewReportsClient(conn)
-		ack, err := client.Create(context.Background(), &r.report)
+		ack, err := client.Create(context.Background(), &r.Proto)
 		if err != nil {
 			return err
 		}

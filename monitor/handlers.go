@@ -10,7 +10,22 @@ import (
 	"github.com/BTBurke/wtf/proto"
 )
 
-func handleFinished(c *Command, cmd *exec.Cmd) error {
+// ProcessHandlers is an interface for methods called based on the current
+// status of the process
+type ProcessHandlers interface {
+	Finished(c *Command, cmd *exec.Cmd) error
+	Signal(c *Command, cmd *exec.Cmd, sig os.Signal) error
+	Timeout(c *Command, cmd *exec.Cmd) error
+	TimeWarning(c *Command)
+	CheckMemory(c *Command, pid int) error
+	KillOnHighMemory(c *Command, cmd *exec.Cmd) error
+}
+
+type handler struct{}
+
+// Finished is called when the process ends and determines whether the process completed successfully.
+// It also checks that any artifacts expected to be created exist.
+func (h handler) Finished(c *Command, cmd *exec.Cmd) error {
 	switch cmd.ProcessState.Success() {
 	case true:
 		c.Success = true
@@ -42,7 +57,7 @@ func handleFinished(c *Command, cmd *exec.Cmd) error {
 	return nil
 }
 
-func handleSignal(c *Command, cmd *exec.Cmd, sig os.Signal) error {
+func (h handler) Signal(c *Command, cmd *exec.Cmd, sig os.Signal) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -58,7 +73,7 @@ func handleSignal(c *Command, cmd *exec.Cmd, sig os.Signal) error {
 	return nil
 }
 
-func handleTimeout(c *Command, cmd *exec.Cmd) error {
+func (h handler) Timeout(c *Command, cmd *exec.Cmd) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -74,12 +89,12 @@ func handleTimeout(c *Command, cmd *exec.Cmd) error {
 	return nil
 }
 
-func handleTimeWarning(c *Command) {
+func (h handler) TimeWarning(c *Command) {
 	fmt.Println("TODO: send time warning")
 	return
 }
 
-func checkMemory(c *Command, pid int) error {
+func (h handler) CheckMemory(c *Command, pid int) error {
 	mem := calculateMemory(pid)
 	if mem > c.MaxMemory {
 		c.mutex.Lock()
@@ -102,7 +117,7 @@ func checkMemory(c *Command, pid int) error {
 	return nil
 }
 
-func killOnHighMemory(c *Command, cmd *exec.Cmd) error {
+func (h handler) KillOnHighMemory(c *Command, cmd *exec.Cmd) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
