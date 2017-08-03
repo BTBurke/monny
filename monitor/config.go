@@ -3,7 +3,6 @@ package monitor
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -13,6 +12,9 @@ import (
 const api string = "https://report.lmkwtf.com"
 const port string = "443"
 
+// Config stores configuration data for the monitoring service.  Functional options are
+// used to modify the configuration based on command-line flags or optional YAML configuration.
+// See documentation of individual functional options for descriptions.
 type Config struct {
 	ID              string
 	Rules           []rule
@@ -29,12 +31,10 @@ type Config struct {
 	StderrHistory   int
 	NotifyOnSuccess bool
 	NotifyOnFailure bool
-	Shell           string
 
-	host      string
-	port      string
-	useTLS    bool
-	comingled []string
+	host   string
+	port   string
+	useTLS bool
 }
 
 type rule struct {
@@ -42,6 +42,7 @@ type rule struct {
 	Regex *regexp.Regexp
 }
 
+// ConfigOption is a function for validating and setting configuration values
 type ConfigOption func(c *Config) error
 
 func newConfig(options ...ConfigOption) (Config, []error) {
@@ -67,16 +68,7 @@ func newConfig(options ...ConfigOption) (Config, []error) {
 			errors = append(errors, err)
 		}
 	}
-	if c.Shell == "" {
-		shell, err := exec.LookPath("bash")
-		if err != nil {
-			errors = append(errors, fmt.Errorf("no default shell found, specify path to shell using option --shell"))
-		}
-		c.Shell = shell
-	}
-	if len(c.comingled) > 0 {
-		errors = append(errors, fmt.Errorf("unknown options: %s\n\nIf these are command-line options for your process add a blank flag separator (--) between the commands like:\nwtf -c config.yaml -- mycommand.sh --myoption", strings.Join(c.comingled, ",")))
-	}
+
 	if len(c.ID) == 0 {
 		errors = append(errors, fmt.Errorf("id is required, use wtf -i <id>; new ids are created with wtfctl create"))
 	}
@@ -87,6 +79,8 @@ func newConfig(options ...ConfigOption) (Config, []error) {
 	return c, nil
 }
 
+// ID of this monitor, used to connect the report with the notification
+// channels configured via xrayctl
 func ID(id string) ConfigOption {
 	return func(c *Config) error {
 		c.ID = id
@@ -94,6 +88,7 @@ func ID(id string) ConfigOption {
 	}
 }
 
+// Rule that reports on regex match to stdout or stderr
 func Rule(regex string) ConfigOption {
 	return func(c *Config) error {
 		reg, err := regexp.Compile(regex)
@@ -102,6 +97,9 @@ func Rule(regex string) ConfigOption {
 	}
 }
 
+// JSONRule is like Rule except the stdout or stderr is unmarshaled to a JSON object and
+// the regex match is applied to a particular field.  Nested fields are selected by flattening
+// the path.
 func JSONRule(field string, regex string) ConfigOption {
 	return func(c *Config) error {
 		reg, err := regexp.Compile(regex)
@@ -113,6 +111,9 @@ func JSONRule(field string, regex string) ConfigOption {
 	}
 }
 
+// RuleQuantity creates reports when the total number of rule matches exceeds this value.  To
+// report on a rate, set RulePeriod to a duration and reports are generated when the rate exceeds
+// RuleQuantity/RulePeriod
 func RuleQuantity(quantity string) ConfigOption {
 	return func(c *Config) error {
 		qty, err := strconv.Atoi(quantity)
@@ -124,6 +125,8 @@ func RuleQuantity(quantity string) ConfigOption {
 	}
 }
 
+// RulePeriod is used in conjunction with RuleQuantity to send reports when the rate of rule matches
+// exceceds RuleQuantity/RulePeriod. Expects a time.Duration in string format (e.g. 10m, 1h)
 func RulePeriod(period string) ConfigOption {
 	return func(c *Config) error {
 		duration, err := time.ParseDuration(period)
@@ -135,6 +138,7 @@ func RulePeriod(period string) ConfigOption {
 	}
 }
 
+// StdoutHistory sets the max number of lines of stdout to send with the report (default 30)
 func StdoutHistory(h string) ConfigOption {
 	return func(c *Config) error {
 		hist, err := strconv.Atoi(h)
@@ -146,6 +150,7 @@ func StdoutHistory(h string) ConfigOption {
 	}
 }
 
+// StderrHistory sets the max number of lines of stderr to send with the report (default 30)
 func StderrHistory(h string) ConfigOption {
 	return func(c *Config) error {
 		hist, err := strconv.Atoi(h)
@@ -157,6 +162,8 @@ func StderrHistory(h string) ConfigOption {
 	}
 }
 
+// NoNotifyOnSuccess prevents sending success reports which are necessary for deadman's switch
+// notifications and command completion history
 func NoNotifyOnSuccess() ConfigOption {
 	return func(c *Config) error {
 		c.NotifyOnSuccess = false
@@ -164,6 +171,8 @@ func NoNotifyOnSuccess() ConfigOption {
 	}
 }
 
+// NoNotifyOnFailure prevents sending failure reports.  This can be useful if the process does
+// not use standard exit return values and the failure reports are false positives.
 func NoNotifyOnFailure() ConfigOption {
 	return func(c *Config) error {
 		c.NotifyOnFailure = false
@@ -171,6 +180,8 @@ func NoNotifyOnFailure() ConfigOption {
 	}
 }
 
+// Daemon indicates that this is a long-running process so that rule matches and other reports
+// are sent immediately instead of waiting for process termination.
 func Daemon() ConfigOption {
 	return func(c *Config) error {
 		c.Daemon = true
@@ -178,6 +189,8 @@ func Daemon() ConfigOption {
 	}
 }
 
+// MemoryWarn sends a report when process memory exceeds this value.  Expects a string with
+// units in K, M, or G.  (Linux only, memory measurements on Darwin or Windows is a no-op)
 func MemoryWarn(mem string) ConfigOption {
 	return func(c *Config) error {
 		var err error
@@ -202,6 +215,8 @@ func MemoryWarn(mem string) ConfigOption {
 	}
 }
 
+// MemoryKill kills the process and sends a report when process memory exceeds this value.  Expects a string with
+// units in K, M, or G.  (Linux only, memory measurements on Darwin or Windows is a no-op)
 func MemoryKill(mem string) ConfigOption {
 	return func(c *Config) error {
 		var err error
@@ -226,17 +241,8 @@ func MemoryKill(mem string) ConfigOption {
 	}
 }
 
-func Shell(shellPath string) ConfigOption {
-	return func(c *Config) error {
-		shell, err := exec.LookPath(shellPath)
-		if err != nil {
-			return fmt.Errorf("no shell found at path %s", shellPath)
-		}
-		c.Shell = shell
-		return nil
-	}
-}
-
+// KillTimeout kills the process and sends a report when process run time exceeds the duration set.  Duration
+// is expressed as a string with unit ns, us, ms, s, m, h.
 func KillTimeout(timeout string) ConfigOption {
 	return func(c *Config) error {
 		duration, err := time.ParseDuration(timeout)
@@ -248,6 +254,8 @@ func KillTimeout(timeout string) ConfigOption {
 	}
 }
 
+// NotifyTimeout sends a report when process run time exceeds the duration set.  Duration
+// is expressed as a string with unit ns, us, ms, s, m, h.
 func NotifyTimeout(timeout string) ConfigOption {
 	return func(c *Config) error {
 		duration, err := time.ParseDuration(timeout)
@@ -259,6 +267,8 @@ func NotifyTimeout(timeout string) ConfigOption {
 	}
 }
 
+// Creates generates a report when an expected file is not created as a result of the process.
+// Expects a filepath that will be checked on process completion.
 func Creates(filepath string) ConfigOption {
 	return func(c *Config) error {
 		c.Creates = append(c.Creates, filepath)
@@ -266,6 +276,7 @@ func Creates(filepath string) ConfigOption {
 	}
 }
 
+// Host sets the url and port when using a private reporting server.  Expects host:port.
 func Host(pathWithPort string) ConfigOption {
 	return func(c *Config) error {
 		h := strings.Split(pathWithPort, ":")
@@ -278,6 +289,8 @@ func Host(pathWithPort string) ConfigOption {
 	}
 }
 
+// Insecure allows a non-TLS connection to a private reporting server.  This option should only
+// be used when the reporting server and the monitor communicate over a private internal network.
 func Insecure() ConfigOption {
 	return func(c *Config) error {
 		c.useTLS = false
@@ -285,16 +298,12 @@ func Insecure() ConfigOption {
 	}
 }
 
+// NoErrorReports prevents unhandled errors from being reported to xrayo to improve the quality
+// and stability of the software.  No private data is sent (e.g., no stdout, stderr, or any config data).
+// The only information sent is the text of the error and a stacktrace.
 func NoErrorReports() ConfigOption {
 	return func(c *Config) error {
 		SuppressErrorReporting = true
-		return nil
-	}
-}
-
-func comingledOption(option string) ConfigOption {
-	return func(c *Config) error {
-		c.comingled = append(c.comingled, option)
 		return nil
 	}
 }

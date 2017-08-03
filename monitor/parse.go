@@ -140,35 +140,42 @@ func parseFromFile(fpath string) ([]ConfigOption, error) {
 		case int:
 			opt, err := handleOption(k, strconv.Itoa(v.(int)))
 			if err != nil {
-				return options, nil
+				return options, err
 			}
 			options = append(options, opt)
 		case bool:
 			opt, err := handleOption(k, "")
 			if err != nil {
-				return options, nil
+				return options, err
 			}
 			options = append(options, opt)
 		// handles the case of a list of rules
 		case interface{}:
-			alt := ruleYAML{}
+			alt := listFieldsYAML{}
 			if err := yaml.Unmarshal(data, &alt); err != nil {
 				return options, fmt.Errorf("Could not unmarshal config value for key: %s", k)
 			}
-			if len(alt.Rule) == 0 && len(alt.JSONRule) == 0 {
+			if len(alt.Rule) == 0 && len(alt.JSONRule) == 0 && len(alt.Creates) == 0 {
 				return options, fmt.Errorf("Unknown option: %s", k)
 			}
 			for _, val := range alt.Rule {
 				opt, err := handleOption("rule", val)
 				if err != nil {
-					return options, nil
+					return options, err
 				}
 				options = append(options, opt)
 			}
 			for _, val := range alt.JSONRule {
 				opt, err := handleOption("rule-json", val)
 				if err != nil {
-					return options, nil
+					return options, err
+				}
+				options = append(options, opt)
+			}
+			for _, val := range alt.Creates {
+				opt, err := handleOption("creates", val)
+				if err != nil {
+					return options, err
 				}
 				options = append(options, opt)
 			}
@@ -179,7 +186,8 @@ func parseFromFile(fpath string) ([]ConfigOption, error) {
 	return options, nil
 }
 
-type ruleYAML struct {
+type listFieldsYAML struct {
 	Rule     []string `yaml:"rule"`
 	JSONRule []string `yaml:"rule-json"`
+	Creates  []string `yaml:"creates"`
 }
