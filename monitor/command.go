@@ -16,13 +16,14 @@ import (
 	"github.com/BTBurke/wtf/proto"
 )
 
+// Command represents the current state of process execution
 type Command struct {
 	Config        Config
 	UserCommand   []string
 	Stdout        []string
 	Stderr        []string
 	Success       bool
-	AlertMatches  []AlertMatch
+	RuleMatches   []RuleMatch
 	Killed        bool
 	KillReason    proto.KillReason
 	Created       []File
@@ -35,18 +36,21 @@ type Command struct {
 	ExitCodeValid bool
 	Messages      []string
 
-	mutex         sync.Mutex
-	memWarnSent   bool
-	alertLastSent time.Time
+	mutex          sync.Mutex
+	memWarnSent    bool
+	reportLastSent time.Time
 }
 
+// File represents an artifact that is produced by the process.
+// When configured, the failure to create the file is treated as
+// a trigger for a report.
 type File struct {
 	Path string
 	Size int64
 	Time time.Time
 }
 
-type AlertMatch struct {
+type RuleMatch struct {
 	Time  time.Time
 	Line  string
 	Index [][]int
@@ -183,26 +187,26 @@ func (c *Command) SendReport() {
 	close(cancel)
 }
 
-// checkAlert finds a regular expression match to a line from either Stdout or Stderr.
-func checkAlert(line []byte, alerts []alert) []AlertMatch {
-	var matches []AlertMatch
-	for _, alert := range alerts {
+// checkRule finds a regular expression match to a line from either Stdout or Stderr.
+func checkRule(line []byte, rules []rule) []RuleMatch {
+	var matches []RuleMatch
+	for _, rule := range rules {
 		var text []byte
 		switch {
-		case len(alert.Field) > 0:
-			text = extractTextFromJSON(line, alert.Field)
+		case len(rule.Field) > 0:
+			text = extractTextFromJSON(line, rule.Field)
 		default:
 			text = line
 		}
 
-		found := alert.Regex.FindAllIndex(text, -1)
+		found := rule.Regex.FindAllIndex(text, -1)
 		if found != nil {
-			matches = append(matches, AlertMatch{
+			matches = append(matches, RuleMatch{
 				Time:  time.Now(),
 				Line:  string(line),
 				Index: found,
 			})
-			// TODO: in the alert rate case, should save intermediate results, then clear
+			// TODO: in the rule rate case, should save intermediate results, then clear
 			// once the notification is sent
 			// TODO: for daemon case, send notification only once every 30 mins, saving intermediate
 			// results, then clear
@@ -244,10 +248,10 @@ func extractTextFromJSON(raw []byte, field string) []byte {
 }
 
 func (c *Command) processStdout(line []byte) {
-	matches := checkAlert(line, c.Config.Alerts)
+	matches := checkRule(line, c.Config.Rules)
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	c.AlertMatches = append(c.AlertMatches, matches...)
+	c.RuleMatches = append(c.RuleMatches, matches...)
 	history := len(c.Stdout)
 	switch {
 	case history >= c.Config.StdoutHistory:
@@ -259,10 +263,10 @@ func (c *Command) processStdout(line []byte) {
 }
 
 func (c *Command) processStderr(line []byte) {
-	matches := checkAlert(line, c.Config.Alerts)
+	matches := checkRule(line, c.Config.Rules)
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	c.AlertMatches = append(c.AlertMatches, matches...)
+	c.RuleMatches = append(c.RuleMatches, matches...)
 	history := len(c.Stderr)
 	switch {
 	case history >= c.Config.StderrHistory:

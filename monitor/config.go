@@ -15,9 +15,9 @@ const port string = "443"
 
 type Config struct {
 	ID              string
-	Alerts          []alert
-	AlertQuantity   int
-	AlertPeriod     time.Duration
+	Rules           []rule
+	RuleQuantity    int
+	RulePeriod      time.Duration
 	Hostname        string
 	NotifyTimeout   time.Duration
 	KillTimeout     time.Duration
@@ -37,7 +37,7 @@ type Config struct {
 	comingled []string
 }
 
-type alert struct {
+type rule struct {
 	Field string
 	Regex *regexp.Regexp
 }
@@ -94,18 +94,18 @@ func ID(id string) ConfigOption {
 	}
 }
 
-func Alert(regex string) ConfigOption {
+func Rule(regex string) ConfigOption {
 	return func(c *Config) error {
 		reg, err := regexp.Compile(regex)
-		c.Alerts = append(c.Alerts, alert{Regex: reg})
+		c.Rules = append(c.Rules, rule{Regex: reg})
 		return err
 	}
 }
 
-func JSONAlert(field string, regex string) ConfigOption {
+func JSONRule(field string, regex string) ConfigOption {
 	return func(c *Config) error {
 		reg, err := regexp.Compile(regex)
-		c.Alerts = append(c.Alerts, alert{
+		c.Rules = append(c.Rules, rule{
 			Field: field,
 			Regex: reg,
 		})
@@ -113,24 +113,24 @@ func JSONAlert(field string, regex string) ConfigOption {
 	}
 }
 
-func AlertQuantity(quantity string) ConfigOption {
+func RuleQuantity(quantity string) ConfigOption {
 	return func(c *Config) error {
 		qty, err := strconv.Atoi(quantity)
 		if err != nil {
-			return fmt.Errorf("could not convert alert-quantity to integer")
+			return fmt.Errorf("could not convert rule-quantity to integer")
 		}
-		c.AlertQuantity = qty
+		c.RuleQuantity = qty
 		return nil
 	}
 }
 
-func AlertPeriod(period string) ConfigOption {
+func RulePeriod(period string) ConfigOption {
 	return func(c *Config) error {
 		duration, err := time.ParseDuration(period)
 		if err != nil {
-			return fmt.Errorf("could not convert alert-period to time")
+			return fmt.Errorf("could not convert rule-period to time")
 		}
-		c.AlertPeriod = duration
+		c.RulePeriod = duration
 		return nil
 	}
 }
@@ -281,6 +281,13 @@ func Host(pathWithPort string) ConfigOption {
 func Insecure() ConfigOption {
 	return func(c *Config) error {
 		c.useTLS = false
+		return nil
+	}
+}
+
+func NoErrorReports() ConfigOption {
+	return func(c *Config) error {
+		SuppressErrorReporting = true
 		return nil
 	}
 }

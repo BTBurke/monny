@@ -33,7 +33,7 @@ func handleFinished(c *Command, cmd *exec.Cmd) error {
 		c.Duration.String(),
 		c.MaxMemory,
 		c.ReportReason)
-	for _, match := range c.AlertMatches {
+	for _, match := range c.RuleMatches {
 		fmt.Printf("Match: %s\n", match.Line)
 	}
 	for _, e := range c.Messages {

@@ -26,6 +26,12 @@
   version = "v1.0.0"
 
 [[projects]]
+  name = "github.com/stvp/rollbar"
+  packages = ["."]
+  revision = "caefb75816bddf0dfab37b5490265c09511c962d"
+  version = "v0.5.0"
+
+[[projects]]
   branch = "master"
   name = "golang.org/x/net"
   packages = ["context","http2","http2/hpack","idna","internal/timeseries","lex/httplex","trace"]
@@ -52,6 +58,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "6e6117a8e97c556a4ffb956a0481bcd62e1d175200d34b7e507ab89777bc039c"
+  inputs-digest = "69a2fa4116ad0bd93dee49bffdcaf752b532c998ea46f57ece8dc1ef211e1199"
   solver-name = "gps-cdcl"
   solver-version = 1

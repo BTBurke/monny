@@ -9,12 +9,16 @@ import (
 
 func main() {
 
-	usercmd, opts := monitor.ParseCommandLine()
+	usercmd, opts, err := monitor.ParseCommandLine()
+	if err != nil {
+		fmt.Printf("Could not parse configuration: %s\n\nUse xray --help for options\n", err)
+		os.Exit(1)
+	}
 
-	cmd, err := monitor.New(usercmd, opts...)
-	if len(err) > 0 {
+	cmd, errs := monitor.New(usercmd, opts...)
+	if len(errs) > 0 {
 		fmt.Println("Error in config:")
-		for _, e := range err {
+		for _, e := range errs {
 			fmt.Println(e)
 		}
 		os.Exit(1)

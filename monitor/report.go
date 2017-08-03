@@ -15,6 +15,9 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
+// reportFromCommand converts a Command to a pb.Report, doing
+// some conversion to be compatible with PB types and storage
+// schema on the backend
 func reportFromCommand(c *Command) pb.Report {
 	return pb.Report{
 		Id:            c.Config.ID,
@@ -33,7 +36,7 @@ func reportFromCommand(c *Command) pb.Report {
 		ExitCode:      c.ExitCode,
 		ExitCodeValid: c.ExitCodeValid,
 		Messages:      c.Messages,
-		Matches:       marshalMatches(c.AlertMatches),
+		Matches:       marshalMatches(c.RuleMatches),
 		UserCommand:   strings.Join(c.UserCommand, " "),
 		Config:        marshalConfig(c.Config),
 		CreatedAt:     time.Now().Unix(),
@@ -47,6 +50,8 @@ type report struct {
 	opts   []grpc.DialOption
 }
 
+// NewReport prepares a new report based on the current status of
+// the command.
 func NewReport(c *Command, opts ...grpc.DialOption) *report {
 	r := report{
 		host:   c.Config.host,
@@ -60,6 +65,9 @@ func NewReport(c *Command, opts ...grpc.DialOption) *report {
 	return &r
 }
 
+// Send will transmit a report to the notification server using a go routine.
+// Errors will cause an exponential backoff until the call is successful or a timeout
+// is received from the parent.
 func (r *report) Send(result chan error, cancel chan bool) {
 	send := func() error {
 		conn, err := grpc.Dial(net.JoinHostPort(r.host, r.port), r.opts...)
@@ -84,23 +92,35 @@ func (r *report) Send(result chan error, cancel chan bool) {
 	}
 }
 
-func marshalMatches(a []AlertMatch) []byte {
-	// ignore error here because the report
-	// should be sent even if this conversion fails
-	b, _ := json.Marshal(a)
+func marshalMatches(a []RuleMatch) []byte {
+	b, err := json.Marshal(a)
+	if err != nil {
+		// Error will be reported externally, but should
+		// not happen.  Report will continue even if this
+		// conversion fails.
+		ReportError(err)
+	}
 	return b
 }
 
 func marshalCreated(a []File) []byte {
-	// ignore error here because the report
-	// should be sent even if this conversion fails
-	b, _ := json.Marshal(a)
+	b, err := json.Marshal(a)
+	if err != nil {
+		// Error will be reported externally, but should
+		// not happen.  Report will continue even if this
+		// conversion fails.
+		ReportError(err)
+	}
 	return b
 }
 
 func marshalConfig(a Config) []byte {
-	// ignore error here because the report
-	// should be sent even if this conversion fails
-	b, _ := json.Marshal(a)
+	b, err := json.Marshal(a)
+	if err != nil {
+		// Error will be reported externally, but should
+		// not happen.  Report will continue even if this
+		// conversion fails.
+		ReportError(err)
+	}
 	return b
 }

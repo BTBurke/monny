@@ -14,22 +14,26 @@ import (
 
 type options struct {
 	options []ConfigOption
+	err     error
 }
 
-func ParseCommandLine() ([]string, []ConfigOption) {
+// ParseCommandLine configures the client from command line options or from
+// a YAML configuration file passed with the -c flag.  Returns the user command
+// and a slice of functional options that can be applied to the configuration.
+func ParseCommandLine() ([]string, []ConfigOption, error) {
 	options := options{}
 
-	pf := pflag.NewFlagSet("wtf", pflag.ExitOnError)
+	pf := pflag.NewFlagSet("xray", pflag.ContinueOnError)
 	pf.Usage = func() {
-		fmt.Printf("Usage of wtf:\nwtf -i <identifier> <options> mycommand\nwtf -i <identifier> <options> -- mycommand <mycommand-options>\n")
+		fmt.Printf("Usage of xray:\nxray -i <identifier> <options> mycommand\nxray -i <identifier> <options> -- mycommand <mycommand-options>\n")
 		fmt.Printf("\n%s", pf.FlagUsagesWrapped(10))
-		fmt.Printf("\n\nFor unknown flag errors, add an empty flag separator (--) between the flags for wtf and your command.  Example:\n\nwtf -i id -c config.yml -- mycommand --otherflag\n")
+		fmt.Printf("\n\nFor unknown flag errors, add an empty flag separator (--) between the flags for xray and your command.  Example:\n\nxray -i id -c config.yml -- mycommand --otherflag\n")
 	}
 
 	pf.StringP("id", "i", "", "Identifier for this monitor (required)")
 	pf.StringP("config", "c", "", "Use yaml configuration file")
-	pf.String("alert", "", "Creates a notification if this string appears in the output.  Regex OK.")
-	pf.String("alert-json", "", "Creates a notification if this text appears in the JSON output.  Accepts the field and a regular expression or simple text separated by a colon (e.g. field:value).  Nested JSON structures are accessed using a flattened path with a dot (e.g. field.nested:value).")
+	pf.String("rule", "", "Creates a notification if this string appears in the output.  Regex OK.")
+	pf.String("rule-json", "", "Creates a notification if this text appears in the JSON output.  Accepts the field and a regular expression or simple text separated by a colon (e.g. field:value).  Nested JSON structures are accessed using a flattened path with a dot (e.g. field.nested:value).")
 	pf.Int("stdout-history", 30, "Number of lines of stdout to send with the report.")
 	pf.Int("stderr-history", 30, "Number of lines of stderr to send with the report.")
 	pf.Bool("no-notify-on-success", false, "Do not send a report on succesful completion of this process.")
@@ -42,8 +46,10 @@ func ParseCommandLine() ([]string, []ConfigOption) {
 	pf.String("creates", "", "Send notification if file is not created after end of process")
 	pf.String("host", "", "Host to which to send the reports as host:port")
 	pf.Bool("insecure", false, "Do not use TLS to secure connection for reports")
+	pf.Bool("no-error-reports", false, "Do not send reports when there are unexpected errors in the client")
 	pf.ParseAll(os.Args[1:], parseFlag(&options))
-	return pf.Args(), options.options
+
+	return pf.Args(), options.options, options.err
 }
 
 func parseFlag(o *options) func(*pflag.Flag, string) error {
@@ -52,12 +58,14 @@ func parseFlag(o *options) func(*pflag.Flag, string) error {
 		case "config":
 			opts, err := parseFromFile(value)
 			if err != nil {
+				o.err = err
 				return err
 			}
 			o.options = append(o.options, opts...)
 		default:
 			option, err := handleOption(flag.Name, value)
 			if err != nil {
+				o.err = err
 				return err
 			}
 			o.options = append(o.options, option)
@@ -70,14 +78,14 @@ func handleOption(name string, value string) (ConfigOption, error) {
 	switch name {
 	case "id":
 		return ID(value), nil
-	case "alert":
-		return Alert(value), nil
-	case "alert-json":
-		jalert := strings.SplitAfterN(value, ":", 2)
-		if len(jalert) != 2 {
-			return nil, fmt.Errorf("invalid format for json alert, should be field:value only in %s", value)
+	case "rule":
+		return Rule(value), nil
+	case "rule-json":
+		jrule := strings.SplitAfterN(value, ":", 2)
+		if len(jrule) != 2 {
+			return nil, fmt.Errorf("invalid format for json rule, should be field:value only in %s", value)
 		}
-		return JSONAlert(jalert[0], jalert[1]), nil
+		return JSONRule(jrule[0], jrule[1]), nil
 	case "stdout-history":
 		return StdoutHistory(value), nil
 	case "stderr-history":
@@ -102,8 +110,10 @@ func handleOption(name string, value string) (ConfigOption, error) {
 		return Host(value), nil
 	case "insecure":
 		return Insecure(), nil
+	case "no-error-reports":
+		return NoErrorReports(), nil
 	default:
-		return comingledOption(value), nil
+		return nil, fmt.Errorf("Unknown option: %s", name)
 	}
 }
 
@@ -139,21 +149,24 @@ func parseFromFile(fpath string) ([]ConfigOption, error) {
 				return options, nil
 			}
 			options = append(options, opt)
-		// handles the case of a list of alerts
+		// handles the case of a list of rules
 		case interface{}:
-			alt := alertYAML{}
+			alt := ruleYAML{}
 			if err := yaml.Unmarshal(data, &alt); err != nil {
 				return options, fmt.Errorf("Could not unmarshal config value for key: %s", k)
 			}
-			for _, val := range alt.Alert {
-				opt, err := handleOption("alert", val)
+			if len(alt.Rule) == 0 && len(alt.JSONRule) == 0 {
+				return options, fmt.Errorf("Unknown option: %s", k)
+			}
+			for _, val := range alt.Rule {
+				opt, err := handleOption("rule", val)
 				if err != nil {
 					return options, nil
 				}
 				options = append(options, opt)
 			}
-			for _, val := range alt.JSONAlert {
-				opt, err := handleOption("alert", val)
+			for _, val := range alt.JSONRule {
+				opt, err := handleOption("rule-json", val)
 				if err != nil {
 					return options, nil
 				}
@@ -166,7 +179,7 @@ func parseFromFile(fpath string) ([]ConfigOption, error) {
 	return options, nil
 }
 
-type alertYAML struct {
-	Alert     []string `yaml:"alert"`
-	JSONAlert []string `yaml:"alert-json"`
+type ruleYAML struct {
+	Rule     []string `yaml:"rule"`
+	JSONRule []string `yaml:"rule-json"`
 }
