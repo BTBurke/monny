@@ -70,7 +70,7 @@ func newConfig(options ...ConfigOption) (Config, []error) {
 	}
 
 	if len(c.ID) == 0 {
-		errors = append(errors, fmt.Errorf("id is required, use wtf -i <id>; new ids are created with wtfctl create"))
+		errors = append(errors, fmt.Errorf("id is required, use xray -i <id>; new ids are created with xrayctl create"))
 	}
 
 	if len(errors) > 0 {

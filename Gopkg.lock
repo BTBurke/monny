@@ -8,6 +8,12 @@
   version = "v1.0.0"
 
 [[projects]]
+  name = "github.com/davecgh/go-spew"
+  packages = ["spew"]
+  revision = "346938d642f2ec3594ed81d874461961cd0faa76"
+  version = "v1.1.0"
+
+[[projects]]
   branch = "v2"
   name = "github.com/go-yaml/yaml"
   packages = ["."]
@@ -20,10 +26,22 @@
   revision = "748d386b5c1ea99658fd69fe9f03991ce86a90c1"
 
 [[projects]]
+  name = "github.com/pmezard/go-difflib"
+  packages = ["difflib"]
+  revision = "792786c7400a136282c1664665ae0a8db921c6c2"
+  version = "v1.0.0"
+
+[[projects]]
   name = "github.com/spf13/pflag"
   packages = ["."]
   revision = "e57e3eeb33f795204c1ca35f56c44f83227c6e66"
   version = "v1.0.0"
+
+[[projects]]
+  name = "github.com/stretchr/testify"
+  packages = ["assert"]
+  revision = "69483b4bd14f5845b5a1e55bca19e954e827f1d0"
+  version = "v1.1.4"
 
 [[projects]]
   name = "github.com/stvp/rollbar"
@@ -58,6 +76,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "69a2fa4116ad0bd93dee49bffdcaf752b532c998ea46f57ece8dc1ef211e1199"
+  inputs-digest = "cac468aa1dbd038e1901d69df842e96242c6d5f0ba34041ed853b0584f2e1275"
   solver-name = "gps-cdcl"
   solver-version = 1
