@@ -3,6 +3,7 @@ package monitor
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -31,6 +32,7 @@ type Config struct {
 	StderrHistory   int
 	NotifyOnSuccess bool
 	NotifyOnFailure bool
+	Shell           string
 
 	host   string
 	port   string
@@ -69,6 +71,11 @@ func newConfig(options ...ConfigOption) (Config, []error) {
 		}
 	}
 
+	shell, err := findDefaultShell()
+	if err != nil {
+		errors = append(errors, err)
+	}
+	c.Shell = shell
 	if len(c.ID) == 0 {
 		errors = append(errors, fmt.Errorf("id is required, use xray -i <id>; new ids are created with xrayctl create"))
 	}
@@ -77,6 +84,14 @@ func newConfig(options ...ConfigOption) (Config, []error) {
 		return Config{}, errors
 	}
 	return c, nil
+}
+
+func findDefaultShell() (string, error) {
+	shell := os.Getenv("SHELL")
+	if len(shell) == 0 {
+		return shell, fmt.Errorf("could not determine default shell, set with --shell=<full path to shell>")
+	}
+	return shell, nil
 }
 
 // ID of this monitor, used to connect the report with the notification
@@ -304,6 +319,19 @@ func Insecure() ConfigOption {
 func NoErrorReports() ConfigOption {
 	return func(c *Config) error {
 		SuppressErrorReporting = true
+		return nil
+	}
+}
+
+// Shell sets the shell that will execute the command.  If an absolute path is not specified, the search
+// path will be checked for the executable.
+func Shell(shell string) ConfigOption {
+	return func(c *Config) error {
+		path, err := exec.LookPath(shell)
+		if err != nil {
+			return err
+		}
+		c.Shell = path
 		return nil
 	}
 }

@@ -4,11 +4,12 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"os/signal"
+	"regexp"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -37,10 +38,12 @@ type Command struct {
 	Messages      []string
 
 	mutex        sync.Mutex
+	pid          int
 	memWarnSent  bool
 	timeWarnSent bool
 	handler      ProcessHandlers
 	report       ReportSender
+	cleanup      []func() error
 }
 
 // File represents an artifact that is produced by the process.
@@ -76,11 +79,17 @@ func New(usercmd []string, options ...ConfigOption) (*Command, []error) {
 
 func (c *Command) Exec() error {
 	var cmd *exec.Cmd
-	switch len(c.UserCommand) {
+	wrappedCmd, cleanup, err := wrapComplexCommand(c.Config.Shell, c.UserCommand)
+	if err != nil {
+		return err
+	}
+	c.cleanup = append(c.cleanup, cleanup)
+
+	switch len(wrappedCmd) {
 	case 1:
-		cmd = exec.Command(c.UserCommand[0])
+		cmd = exec.Command(wrappedCmd[0])
 	default:
-		cmd = exec.Command(c.UserCommand[0], c.UserCommand[1:]...)
+		cmd = exec.Command(wrappedCmd[0], wrappedCmd[1:]...)
 	}
 	stdoutReader, err := cmd.StdoutPipe()
 	if err != nil {
@@ -93,9 +102,15 @@ func (c *Command) Exec() error {
 	stdoutScanner := bufio.NewScanner(stdoutReader)
 	stderrScanner := bufio.NewScanner(stderrReader)
 
+	c.Start = time.Now()
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	c.pid = os.Getpid()
+
 	var wg sync.WaitGroup
+	wg.Add(2)
 	go func() {
-		wg.Add(1)
 		defer wg.Done()
 		for stdoutScanner.Scan() {
 			fmt.Fprintln(os.Stdout, stdoutScanner.Text())
@@ -103,7 +118,6 @@ func (c *Command) Exec() error {
 		}
 	}()
 	go func() {
-		wg.Add(1)
 		defer wg.Done()
 		for stderrScanner.Scan() {
 			fmt.Fprintln(os.Stderr, stderrScanner.Text())
@@ -133,20 +147,9 @@ func (c *Command) Exec() error {
 		}
 	}
 
-	c.Start = time.Now()
-	if err := cmd.Start(); err != nil {
-		return err
-	}
 	go func() {
-		if err := cmd.Wait(); err != nil {
-			wg.Wait()
-			c.Finish = time.Now()
-			c.Duration = c.Finish.Sub(c.Start)
-			runFinished <- true
-		}
 		wg.Wait()
-		c.Finish = time.Now()
-		c.Duration = c.Finish.Sub(c.Start)
+		cmd.Wait()
 		runFinished <- true
 	}()
 
@@ -161,7 +164,7 @@ func (c *Command) Exec() error {
 		case <-timenotify:
 			c.handler.TimeWarning(c)
 		case <-profileMemory:
-			if err := c.handler.CheckMemory(c, cmd.Process.Pid); err != nil {
+			if err := c.handler.CheckMemory(c, cmd); err != nil {
 				return c.handler.KillOnHighMemory(c, cmd)
 			}
 		}
@@ -212,10 +215,6 @@ func checkRule(line []byte, rules []rule) []RuleMatch {
 				Line:  string(line),
 				Index: found,
 			})
-			// TODO: in the rule rate case, should save intermediate results, then clear
-			// once the notification is sent
-			// TODO: for daemon case, send notification only once every 30 mins, saving intermediate
-			// results, then clear
 		}
 	}
 	return matches
@@ -236,6 +235,7 @@ func extractTextFromJSON(raw []byte, field string) []byte {
 			return []byte{}
 		}
 		value := res[field]
+
 		switch value.(type) {
 		case string:
 			return []byte(value.(string))
@@ -245,8 +245,26 @@ func extractTextFromJSON(raw []byte, field string) []byte {
 			return []byte(fmt.Sprintf("%f", value.(float64)))
 		case bool:
 			return []byte(fmt.Sprintf("%v", value.(bool)))
-		case int:
-			return []byte(strconv.Itoa(value.(int)))
+		case []interface{}:
+			var out []string
+			vals, ok := value.([]interface{})
+			if !ok {
+				return []byte{}
+			}
+			for _, val := range vals {
+				switch val.(type) {
+				case string:
+					out = append(out, val.(string))
+				case float32:
+					out = append(out, fmt.Sprintf("%f", value.(float32)))
+				case float64:
+					out = append(out, fmt.Sprintf("%f", value.(float64)))
+				case bool:
+					out = append(out, fmt.Sprintf("%v", val.(bool)))
+				default:
+				}
+			}
+			return []byte(strings.Join(out, "\n"))
 		default:
 			return []byte{}
 		}
@@ -279,6 +297,51 @@ func (c *Command) processStderr(line []byte) {
 		c.Stderr = append(c.Stderr[2:], string(line))
 	default:
 		c.Stderr = append(c.Stderr, string(line))
+	}
+	return
+}
+
+func wrapComplexCommand(shell string, args []string) ([]string, func() error, error) {
+	r := regexp.MustCompile("(&&|\x7C|<|>)")
+
+	var match []byte
+	for _, arg := range args {
+		match = r.Find([]byte(arg))
+		if match != nil {
+			break
+		}
+	}
+
+	switch match {
+	case nil:
+		return args, nil, nil
+	default:
+		wd, err := os.Getwd()
+		if err != nil {
+			return args, nil, err
+		}
+		f, err := ioutil.TempFile(wd, "xrayo")
+		if err != nil {
+			return args, nil, err
+		}
+		if _, err := f.Write([]byte(strings.Join(args, " "))); err != nil {
+			return args, nil, err
+		}
+		if err := f.Chmod(os.ModePerm); err != nil {
+			return args, nil, err
+		}
+		if err := f.Close(); err != nil {
+			return args, nil, err
+		}
+		return []string{shell, f.Name()}, func() error { return os.Remove(f.Name()) }, nil
+	}
+}
+
+func (c *Command) Cleanup() (errs []error) {
+	for _, f := range c.cleanup {
+		if err := f(); err != nil {
+			errs = append(errs, err)
+		}
 	}
 	return
 }

@@ -16,8 +16,8 @@ type ProcessHandlers interface {
 	Finished(c *Command, cmd *exec.Cmd) error
 	Signal(c *Command, cmd *exec.Cmd, sig os.Signal) error
 	Timeout(c *Command, cmd *exec.Cmd) error
-	TimeWarning(c *Command)
-	CheckMemory(c *Command, pid int) error
+	TimeWarning(c *Command) error
+	CheckMemory(c *Command, cmd *exec.Cmd) error
 	KillOnHighMemory(c *Command, cmd *exec.Cmd) error
 }
 
@@ -26,6 +26,8 @@ type handler struct{}
 // Finished is called when the process ends and determines whether the process completed successfully.
 // It also checks that any artifacts expected to be created exist.
 func (h handler) Finished(c *Command, cmd *exec.Cmd) error {
+	c.Finish = time.Now()
+	c.Duration = c.Finish.Sub(c.Start)
 	switch cmd.ProcessState.Success() {
 	case true:
 		c.Success = true
@@ -62,7 +64,7 @@ func (h handler) Signal(c *Command, cmd *exec.Cmd, sig os.Signal) error {
 	defer c.mutex.Unlock()
 
 	c.Finish = time.Now()
-	c.Duration = c.Start.Sub(c.Finish)
+	c.Duration = c.Finish.Sub(c.Start)
 	c.Killed = true
 	c.KillReason = proto.Signal
 	c.ReportReason = proto.Killed
@@ -89,30 +91,30 @@ func (h handler) Timeout(c *Command, cmd *exec.Cmd) error {
 	return nil
 }
 
-func (h handler) TimeWarning(c *Command) {
+func (h handler) TimeWarning(c *Command) error {
 	fmt.Println("TODO: send time warning")
-	return
+	return nil
 }
 
-func (h handler) CheckMemory(c *Command, pid int) error {
-	mem := calculateMemory(pid)
+func (h handler) CheckMemory(c *Command, cmd *exec.Cmd) error {
+	mem := calculateMemory(cmd.Process.Pid)
 	if mem > c.MaxMemory {
 		c.mutex.Lock()
-		defer c.mutex.Unlock()
 		c.MaxMemory = mem
+		c.mutex.Unlock()
 	}
 	if c.Config.MemoryWarn > 0 && mem >= c.Config.MemoryWarn {
 		fmt.Println("Memory warning exceeded")
 		if !c.memWarnSent {
 			c.mutex.Lock()
-			defer c.mutex.Unlock()
 			c.memWarnSent = true
+			c.mutex.Unlock()
 			fmt.Println("TODO: send the warning")
 		}
 	}
 	if c.Config.MemoryKill > 0 && mem >= c.Config.MemoryKill {
 		fmt.Println("Memory kill")
-		return fmt.Errorf("kill on high memory")
+		return fmt.Errorf("high memory kill")
 	}
 	return nil
 }
@@ -123,10 +125,10 @@ func (h handler) KillOnHighMemory(c *Command, cmd *exec.Cmd) error {
 
 	c.Killed = true
 	c.KillReason = proto.Memory
+	c.ReportReason = proto.Killed
 	c.Finish = time.Now()
-	c.Duration = c.Start.Sub(c.Finish)
-	if err := cmd.Process.Kill(); err != nil {
-		fmt.Printf("Kill error: %v", err)
+	c.Duration = c.Finish.Sub(c.Start)
+	if err := cmd.Process.Signal(os.Kill); err != nil {
 		return err
 	}
 	return nil

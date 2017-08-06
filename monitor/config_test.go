@@ -79,6 +79,7 @@ func TestConfigOptions(t *testing.T) {
 
 func TestConfigConstruction(t *testing.T) {
 	host, _ := os.Hostname()
+	shell, _ := findDefaultShell()
 	tt := []struct {
 		Name    string
 		Options []ConfigOption
@@ -95,6 +96,7 @@ func TestConfigConstruction(t *testing.T) {
 			host:            api,
 			port:            port,
 			useTLS:          true,
+			Shell:           shell,
 		}},
 		{Name: "multiple option", Options: []ConfigOption{ID("test"), Insecure()}, Expect: Config{
 			ID:              "test",
@@ -106,6 +108,7 @@ func TestConfigConstruction(t *testing.T) {
 			host:            api,
 			port:            port,
 			useTLS:          false,
+			Shell:           shell,
 		}},
 		{Name: "no ID", Options: []ConfigOption{}, Error: true},
 		{Name: "option error", Options: []ConfigOption{ID("test"), Rule("(")}, Error: true},

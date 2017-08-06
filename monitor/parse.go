@@ -47,6 +47,7 @@ func ParseCommandLine() ([]string, []ConfigOption, error) {
 	pf.String("host", "", "Host to which to send the reports as host:port")
 	pf.Bool("insecure", false, "Do not use TLS to secure connection for reports")
 	pf.Bool("no-error-reports", false, "Do not send reports when there are unexpected errors in the client")
+	pf.String("shell", "", "Shell to use to execute command")
 	pf.ParseAll(os.Args[1:], parseFlag(&options))
 
 	return pf.Args(), options.options, options.err
@@ -112,6 +113,8 @@ func handleOption(name string, value string) (ConfigOption, error) {
 		return Insecure(), nil
 	case "no-error-reports":
 		return NoErrorReports(), nil
+	case "shell":
+		return Shell(value), nil
 	default:
 		return nil, fmt.Errorf("Unknown option: %s", name)
 	}
