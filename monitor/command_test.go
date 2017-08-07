@@ -2,7 +2,6 @@ package monitor
 
 import (
 	"fmt"
-	"log"
 	"math"
 	"os"
 	"os/exec"
@@ -55,7 +54,6 @@ func (m mockHandlers) KillOnHighMemory(c *Command, cmd *exec.Cmd) error {
 type mockReport struct{}
 
 func (m *mockReport) Send(c *Command, reason proto.ReportReason) {
-	log.Printf("got send reason: %s", reason)
 	return
 }
 
