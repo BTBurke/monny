@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"os/exec"
@@ -51,6 +52,13 @@ func (m mockHandlers) KillOnHighMemory(c *Command, cmd *exec.Cmd) error {
 	return args.Error(0)
 }
 
+type mockReport struct{}
+
+func (m *mockReport) Send(c *Command, reason proto.ReportReason) {
+	log.Printf("got send reason: %s", reason)
+	return
+}
+
 func TestHandlerCalls(t *testing.T) {
 	tt := []struct {
 		Name     string
@@ -76,10 +84,13 @@ func TestHandlerCalls(t *testing.T) {
 			}
 
 			mocks := new(mockHandlers)
+			mockRpt := new(mockReport)
 			c := &Command{
 				Config:      cfg,
 				UserCommand: strings.Split(tc.Cmd, " "),
 				handler:     mocks,
+				// Report calls not tested here, mocked only to prevent external calls
+				report: mockRpt,
 			}
 
 			for idx, handler := range tc.Handlers {
@@ -121,8 +132,14 @@ func TestIntegration(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.Name, func(t *testing.T) {
 			opts := append(tc.Options, ID("test"))
-			c, _ := New(strings.Split(tc.Cmd, " "), opts...)
-			err := c.Exec()
+			c, err := New(strings.Split(tc.Cmd, " "), opts...)
+			if err != nil {
+				t.Fatalf("unexpected error setting config: %s", err)
+			}
+			c.report = new(mockReport)
+			if err := c.Exec(); err != nil {
+				t.Fatalf("unexpected error execing command: %s", err)
+			}
 			if err := c.Cleanup(); err != nil {
 				t.Fatalf("unexpected cleanup error: %s", err)
 			}
@@ -133,7 +150,6 @@ func TestIntegration(t *testing.T) {
 			if tc.Duration > 0 {
 				assert.Condition(t, duration(tc.Duration, c.Duration, 500))
 			}
-			assert.NoError(t, err)
 			if tc.Cleanup != nil {
 				tc.Cleanup()
 			}
@@ -227,6 +243,8 @@ func TestRules(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error in config: %s", err)
 			}
+			c.report = new(mockReport)
+
 			if err := c.Exec(); err != nil {
 				t.Fatalf("unexpected error running: %s", err)
 			}

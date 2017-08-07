@@ -26,21 +26,30 @@ type handler struct{}
 // Finished is called when the process ends and determines whether the process completed successfully.
 // It also checks that any artifacts expected to be created exist.
 func (h handler) Finished(c *Command, cmd *exec.Cmd) error {
+	c.mutex.Lock()
 	c.Finish = time.Now()
 	c.Duration = c.Finish.Sub(c.Start)
+	c.mutex.Unlock()
+
 	switch cmd.ProcessState.Success() {
 	case true:
+		c.mutex.Lock()
 		c.Success = true
-		c.ReportReason = proto.Success
 		c.ExitCodeValid = true
+		c.ReportReason = proto.Success
+		c.mutex.Unlock()
+		go c.report.Send(c, proto.Success)
 	default:
 		sysinfo, ok := cmd.ProcessState.Sys().(syscall.WaitStatus)
+		c.mutex.Lock()
 		if ok {
 			c.ExitCode = int32(sysinfo.ExitStatus())
 			c.ExitCodeValid = true
 		}
-		c.Success = false
 		c.ReportReason = proto.Failure
+		c.Success = false
+		c.mutex.Unlock()
+		go c.report.Send(c, proto.Failure)
 	}
 	handleFileCreation(c)
 
@@ -61,13 +70,14 @@ func (h handler) Finished(c *Command, cmd *exec.Cmd) error {
 
 func (h handler) Signal(c *Command, cmd *exec.Cmd, sig os.Signal) error {
 	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
 	c.Finish = time.Now()
 	c.Duration = c.Finish.Sub(c.Start)
 	c.Killed = true
 	c.KillReason = proto.Signal
 	c.ReportReason = proto.Killed
+	c.mutex.Unlock()
+
+	go c.report.Send(c, proto.Killed)
 	if err := cmd.Process.Signal(sig); err != nil {
 		return err
 	}
@@ -77,13 +87,14 @@ func (h handler) Signal(c *Command, cmd *exec.Cmd, sig os.Signal) error {
 
 func (h handler) Timeout(c *Command, cmd *exec.Cmd) error {
 	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
 	c.Killed = true
 	c.KillReason = proto.Timeout
 	c.Finish = time.Now()
 	c.Duration = c.Start.Sub(c.Finish)
 	c.ReportReason = proto.Killed
+	c.mutex.Unlock()
+
+	go c.report.Send(c, proto.Killed)
 	if err := cmd.Process.Signal(os.Kill); err != nil {
 		return err
 	}
@@ -108,8 +119,9 @@ func (h handler) CheckMemory(c *Command, cmd *exec.Cmd) error {
 		if !c.memWarnSent {
 			c.mutex.Lock()
 			c.memWarnSent = true
+			c.ReportReason = proto.MemoryWarning
 			c.mutex.Unlock()
-			fmt.Println("TODO: send the warning")
+			go c.report.Send(c, proto.MemoryWarning)
 		}
 	}
 	if c.Config.MemoryKill > 0 && mem >= c.Config.MemoryKill {
@@ -121,13 +133,14 @@ func (h handler) CheckMemory(c *Command, cmd *exec.Cmd) error {
 
 func (h handler) KillOnHighMemory(c *Command, cmd *exec.Cmd) error {
 	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
 	c.Killed = true
 	c.KillReason = proto.Memory
-	c.ReportReason = proto.Killed
 	c.Finish = time.Now()
 	c.Duration = c.Finish.Sub(c.Start)
+	c.ReportReason = proto.Killed
+	c.mutex.Unlock()
+
+	go c.report.Send(c, proto.Killed)
 	if err := cmd.Process.Signal(os.Kill); err != nil {
 		return err
 	}
@@ -139,15 +152,20 @@ func handleFileCreation(c *Command) {
 		finfo, err := os.Stat(f)
 		switch {
 		case os.IsNotExist(err):
-			c.ReportReason = proto.FileNotCreated
+			c.mutex.Lock()
 			c.Success = false
 			c.Messages = append(c.Messages, fmt.Sprintf("file not created: %s", f))
+			c.ReportReason = proto.FileNotCreated
+			c.mutex.Unlock()
+			go c.report.Send(c, proto.FileNotCreated)
 		case err == nil:
+			c.mutex.Lock()
 			c.Created = append(c.Created, File{
 				Path: finfo.Name(),
 				Time: finfo.ModTime(),
 				Size: finfo.Size(),
 			})
+			c.mutex.Unlock()
 		default:
 			continue
 		}

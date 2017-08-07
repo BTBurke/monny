@@ -12,6 +12,12 @@ import (
 // trace to identify the source of the problem.
 var SuppressErrorReporting bool
 
+type ErrorReporter interface {
+	ReportError(err error)
+}
+
+type errorService struct{}
+
 func init() {
 	switch env := os.Getenv("environment"); env {
 	case "development":
@@ -24,6 +30,6 @@ func init() {
 
 // ReportError will send the result of an unexpected error to Rollbar
 // to improve the quality of the client.  Data is anonymous.
-func ReportError(err error) {
+func (e errorService) ReportError(err error) {
 	rollbar.Error(rollbar.ERR, err)
 }

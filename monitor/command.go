@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+
 	"time"
 
 	"github.com/BTBurke/wtf/proto"
@@ -43,6 +44,7 @@ type Command struct {
 	timeWarnSent bool
 	handler      ProcessHandlers
 	report       ReportSender
+	errors       ErrorReporter
 	cleanup      []func() error
 }
 
@@ -71,8 +73,11 @@ func New(usercmd []string, options ...ConfigOption) (*Command, []error) {
 		UserCommand: usercmd,
 		handler:     handler{},
 		report: &Report{
-			Host: cfg.host,
-			Port: cfg.port,
+			sender: &senderService{
+				host:   cfg.host,
+				port:   cfg.port,
+				errors: errorService{},
+			},
 		},
 	}, nil
 }
@@ -171,31 +176,6 @@ func (c *Command) Exec() error {
 	}
 }
 
-// SendReport will send a report based on the current run status
-// of the command.  This is safe to call in a go routine to send
-// in the background.  It will attempt to send a report for 1hr
-// using exponential backoff if there is a problem.
-func (c *Command) SendReport(reason proto.ReportReason) {
-	c.mutex.Lock()
-	c.report.Create(c, reason)
-	c.mutex.Unlock()
-
-	result := make(chan error, 1)
-	cancel := make(chan bool, 1)
-	timeout := time.After(1 * time.Hour)
-
-	go c.report.Send(result, cancel)
-
-	select {
-	case err := <-result:
-		fmt.Println(err)
-	case <-timeout:
-		cancel <- true
-	}
-	close(result)
-	close(cancel)
-}
-
 // checkRule finds a regular expression match to a line from either Stdout or Stderr.
 func checkRule(line []byte, rules []rule) []RuleMatch {
 	var matches []RuleMatch
@@ -274,30 +254,50 @@ func extractTextFromJSON(raw []byte, field string) []byte {
 func (c *Command) processStdout(line []byte) {
 	matches := checkRule(line, c.Config.Rules)
 	c.mutex.Lock()
-	defer c.mutex.Unlock()
 	c.RuleMatches = append(c.RuleMatches, matches...)
+	c.mutex.Unlock()
+	if len(c.RuleMatches) > 0 {
+		switch {
+		case c.Config.RuleQuantity > 0:
+			go c.report.Send(c, proto.AlertRate)
+		default:
+			go c.report.Send(c, proto.Alert)
+		}
+	}
 	history := len(c.Stdout)
+	c.mutex.Lock()
 	switch {
 	case history >= c.Config.StdoutHistory:
 		c.Stdout = append(c.Stdout[2:], string(line))
 	default:
 		c.Stdout = append(c.Stdout, string(line))
 	}
+	c.mutex.Unlock()
 	return
 }
 
 func (c *Command) processStderr(line []byte) {
 	matches := checkRule(line, c.Config.Rules)
 	c.mutex.Lock()
-	defer c.mutex.Unlock()
 	c.RuleMatches = append(c.RuleMatches, matches...)
+	c.mutex.Unlock()
+	if len(c.RuleMatches) > 0 {
+		switch {
+		case c.Config.RuleQuantity > 0:
+			go c.report.Send(c, proto.AlertRate)
+		default:
+			go c.report.Send(c, proto.Alert)
+		}
+	}
 	history := len(c.Stderr)
+	c.mutex.Lock()
 	switch {
 	case history >= c.Config.StderrHistory:
 		c.Stderr = append(c.Stderr[2:], string(line))
 	default:
 		c.Stderr = append(c.Stderr, string(line))
 	}
+	c.mutex.Unlock()
 	return
 }
 
@@ -344,4 +344,20 @@ func (c *Command) Cleanup() (errs []error) {
 		}
 	}
 	return
+}
+
+func calcAlertRate(matches []RuleMatch, quantity int, period time.Duration) bool {
+	var matchesInPeriod int
+	now := time.Now()
+	for _, match := range matches {
+		if now.Sub(match.Time) <= period {
+			matchesInPeriod++
+		}
+	}
+	switch {
+	case matchesInPeriod >= quantity:
+		return true
+	default:
+		return false
+	}
 }
