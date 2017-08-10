@@ -21,8 +21,19 @@ type options struct {
 // a YAML configuration file passed with the -c flag.  Returns the user command
 // and a slice of functional options that can be applied to the configuration.
 func ParseCommandLine() ([]string, []ConfigOption, error) {
-	options := options{}
+	pf := createFlagSet()
+	return parse(os.Args[1:], pf)
+}
 
+func parse(args []string, pf *pflag.FlagSet) ([]string, []ConfigOption, error) {
+	options := options{}
+	if err := pf.ParseAll(args, parseFlag(&options)); err != nil {
+		return pf.Args(), options.options, err
+	}
+	return pf.Args(), options.options, options.err
+}
+
+func createFlagSet() *pflag.FlagSet {
 	pf := pflag.NewFlagSet("xray", pflag.ContinueOnError)
 	pf.Usage = func() {
 		fmt.Printf("Usage of xray:\nxray -i <identifier> <options> mycommand\nxray -i <identifier> <options> -- mycommand <mycommand-options>\n")
@@ -48,9 +59,8 @@ func ParseCommandLine() ([]string, []ConfigOption, error) {
 	pf.Bool("insecure", false, "Do not use TLS to secure connection for reports")
 	pf.Bool("no-error-reports", false, "Do not send reports when there are unexpected errors in the client")
 	pf.String("shell", "", "Shell to use to execute command")
-	pf.ParseAll(os.Args[1:], parseFlag(&options))
 
-	return pf.Args(), options.options, options.err
+	return pf
 }
 
 func parseFlag(o *options) func(*pflag.Flag, string) error {
@@ -86,7 +96,7 @@ func handleOption(name string, value string) (ConfigOption, error) {
 		if len(jrule) != 2 {
 			return nil, fmt.Errorf("invalid format for json rule, should be field:value only in %s", value)
 		}
-		return JSONRule(jrule[0], jrule[1]), nil
+		return JSONRule(jrule[0][0:len(jrule[0])-1], jrule[1]), nil
 	case "stdout-history":
 		return StdoutHistory(value), nil
 	case "stderr-history":
