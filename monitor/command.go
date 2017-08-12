@@ -345,19 +345,3 @@ func (c *Command) Cleanup() (errs []error) {
 	}
 	return
 }
-
-func calcAlertRate(matches []RuleMatch, quantity int, period time.Duration) bool {
-	var matchesInPeriod int
-	now := time.Now()
-	for _, match := range matches {
-		if now.Sub(match.Time) <= period {
-			matchesInPeriod++
-		}
-	}
-	switch {
-	case matchesInPeriod >= quantity:
-		return true
-	default:
-		return false
-	}
-}

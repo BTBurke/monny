@@ -103,7 +103,16 @@ func (h handler) Timeout(c *Command, cmd *exec.Cmd) error {
 }
 
 func (h handler) TimeWarning(c *Command) error {
-	fmt.Println("TODO: send time warning")
+	if c.timeWarnSent {
+		return nil
+	}
+	c.mutex.Lock()
+	c.ReportReason = proto.TimeWarning
+	c.timeWarnSent = true
+	c.mutex.Unlock()
+
+	go c.report.Send(c, proto.TimeWarning)
+
 	return nil
 }
 
@@ -115,17 +124,16 @@ func (h handler) CheckMemory(c *Command, cmd *exec.Cmd) error {
 		c.mutex.Unlock()
 	}
 	if c.Config.MemoryWarn > 0 && mem >= c.Config.MemoryWarn {
-		fmt.Println("Memory warning exceeded")
 		if !c.memWarnSent {
 			c.mutex.Lock()
-			c.memWarnSent = true
 			c.ReportReason = proto.MemoryWarning
+			c.memWarnSent = true
 			c.mutex.Unlock()
+
 			go c.report.Send(c, proto.MemoryWarning)
 		}
 	}
 	if c.Config.MemoryKill > 0 && mem >= c.Config.MemoryKill {
-		fmt.Println("Memory kill")
 		return fmt.Errorf("high memory kill")
 	}
 	return nil

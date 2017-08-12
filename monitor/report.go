@@ -27,21 +27,24 @@ type Report struct {
 	sender sender
 }
 
+// sender is an interface for creating and sending a report in the background.
 type sender interface {
 	create(c *Command, reason proto.ReportReason) *pb.Report
 	sendBackground(report *pb.Report, result chan error, cancel chan bool)
 }
 
+// senderService implements the sender interface to send reports in the background using GRPC
 type senderService struct {
-	host   string
-	port   string
-	opts   []grpc.DialOption
-	errors ErrorReporter
+	host    string
+	port    string
+	timeout time.Duration
+	opts    []grpc.DialOption
+	errors  ErrorReporter
 }
 
 // Create prepares a new report based on the current status of the command.
 func (s *senderService) create(c *Command, reason proto.ReportReason) *pb.Report {
-	pb := s.reportFromCommand(c, reason)
+	pb := reportFromCommand(c, reason, s.errors.ReportError)
 	if c.Config.useTLS {
 		s.opts = append(s.opts, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{})))
 	}
@@ -62,9 +65,28 @@ func (r *Report) Send(c *Command, reason proto.ReportReason) {
 	cancel := make(chan bool, 1)
 	timeout := time.After(1 * time.Hour)
 
+	closeChannels := func() {
+		close(result)
+		close(cancel)
+	}
+
 	cb := func() { return }
 	switch reason {
-	case proto.FileNotCreated, proto.Failure, proto.Success, proto.Killed:
+	case proto.Failure:
+		if c.Config.NotifyOnFailure {
+			go r.sender.sendBackground(pb, result, cancel)
+		} else {
+			closeChannels()
+			return
+		}
+	case proto.Success:
+		if c.Config.NotifyOnSuccess {
+			go r.sender.sendBackground(pb, result, cancel)
+		} else {
+			closeChannels()
+			return
+		}
+	case proto.FileNotCreated, proto.Killed:
 		go r.sender.sendBackground(pb, result, cancel)
 	case proto.Alert:
 		go r.sender.sendBackground(pb, result, cancel)
@@ -80,18 +102,19 @@ func (r *Report) Send(c *Command, reason proto.ReportReason) {
 				c.RuleMatches = []RuleMatch{}
 				return
 			}
+		} else {
+			closeChannels()
+			return
 		}
 	case proto.MemoryWarning:
 		if c.memWarnSent {
-			close(result)
-			close(cancel)
+			closeChannels()
 			return
 		}
 		go r.sender.sendBackground(pb, result, cancel)
 	case proto.TimeWarning:
 		if c.timeWarnSent {
-			close(result)
-			close(cancel)
+			closeChannels()
 			return
 		}
 		go r.sender.sendBackground(pb, result, cancel)
@@ -99,8 +122,7 @@ func (r *Report) Send(c *Command, reason proto.ReportReason) {
 		if c.Config.Daemon {
 			go r.sender.sendBackground(pb, result, cancel)
 		} else {
-			close(result)
-			close(cancel)
+			closeChannels()
 			return
 		}
 	default:
@@ -118,9 +140,9 @@ func (r *Report) Send(c *Command, reason proto.ReportReason) {
 		}
 	case <-timeout:
 		cancel <- true
+		c.errors.ReportError(fmt.Errorf("timeout on background report send: msg=%+v", pb))
 	}
-	close(result)
-	close(cancel)
+	closeChannels()
 }
 
 // Send will transmit a report to the notification server using a go routine.
@@ -154,10 +176,33 @@ func (s *senderService) sendBackground(report *pb.Report, result chan error, can
 	}
 }
 
+func calcAlertRate(matches []RuleMatch, quantity int, period time.Duration) bool {
+	var matchesInPeriod int
+	now := time.Now()
+
+	switch {
+	case period > 0:
+		for _, match := range matches {
+			if now.Sub(match.Time) <= period {
+				matchesInPeriod++
+			}
+		}
+	default:
+		matchesInPeriod = len(matches)
+	}
+
+	switch {
+	case matchesInPeriod >= quantity:
+		return true
+	default:
+		return false
+	}
+}
+
 // reportFromCommand converts a Command to a pb.Report, doing
 // some conversion to be compatible with PB types and storage
 // schema on the backend
-func (s *senderService) reportFromCommand(c *Command, reason proto.ReportReason) *pb.Report {
+func reportFromCommand(c *Command, reason proto.ReportReason, onError func(e error)) *pb.Report {
 	return &pb.Report{
 		Id:            c.Config.ID,
 		Hostname:      c.Config.Hostname,
@@ -167,7 +212,7 @@ func (s *senderService) reportFromCommand(c *Command, reason proto.ReportReason)
 		MaxMemory:     c.MaxMemory,
 		Killed:        c.Killed,
 		KillReason:    pb.KillReason(c.KillReason),
-		Created:       s.marshalCreated(c.Created),
+		Created:       marshalCreated(c.Created, onError),
 		ReportReason:  pb.ReportReason(reason),
 		Start:         c.Start.Unix(),
 		Finish:        c.Finish.Unix(),
@@ -175,42 +220,39 @@ func (s *senderService) reportFromCommand(c *Command, reason proto.ReportReason)
 		ExitCode:      c.ExitCode,
 		ExitCodeValid: c.ExitCodeValid,
 		Messages:      c.Messages,
-		Matches:       s.marshalMatches(c.RuleMatches),
+		Matches:       marshalMatches(c.RuleMatches, onError),
 		UserCommand:   strings.Join(c.UserCommand, " "),
-		Config:        s.marshalConfig(c.Config),
+		Config:        marshalConfig(c.Config, onError),
 		CreatedAt:     time.Now().Unix(),
 	}
 }
 
-func (s *senderService) marshalMatches(a []RuleMatch) []byte {
+func marshalMatches(a []RuleMatch, onError func(e error)) []byte {
 	b, err := json.Marshal(a)
 	if err != nil {
-		// Error will be reported externally, but should
-		// not happen.  Report will continue even if this
+		// Error will be reported externally. Report will continue even if this
 		// conversion fails.
-		s.errors.ReportError(err)
+		onError(err)
 	}
 	return b
 }
 
-func (s *senderService) marshalCreated(a []File) []byte {
+func marshalCreated(a []File, onError func(e error)) []byte {
 	b, err := json.Marshal(a)
 	if err != nil {
-		// Error will be reported externally, but should
-		// not happen.  Report will continue even if this
+		// Error will be reported externally. Report will continue even if this
 		// conversion fails.
-		s.errors.ReportError(err)
+		onError(err)
 	}
 	return b
 }
 
-func (s *senderService) marshalConfig(a Config) []byte {
+func marshalConfig(a Config, onError func(e error)) []byte {
 	b, err := json.Marshal(a)
 	if err != nil {
-		// Error will be reported externally, but should
-		// not happen.  Report will continue even if this
+		// Error will be reported externally. Report will continue even if this
 		// conversion fails.
-		s.errors.ReportError(err)
+		onError(err)
 	}
 	return b
 }
