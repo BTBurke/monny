@@ -57,6 +57,10 @@ func (m *mockReport) Send(c *Command, reason proto.ReportReason) {
 	return
 }
 
+func (m *mockReport) Wait() error {
+	return nil
+}
+
 func TestHandlerCalls(t *testing.T) {
 	tt := []struct {
 		Name     string

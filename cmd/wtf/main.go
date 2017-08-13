@@ -28,6 +28,10 @@ func main() {
 		fmt.Println("Process error:", err)
 		os.Exit(1)
 	}
+	if err := cmd.Wait(); err != nil {
+		fmt.Printf("Not all reports sent: %s\n", err)
+		os.Exit(1)
+	}
 
 	os.Exit(0)
 }

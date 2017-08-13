@@ -1,12 +1,18 @@
 package monitor
 
 import (
+	"fmt"
+	"net"
 	"time"
+
+	"google.golang.org/grpc"
 
 	"github.com/BTBurke/wtf/pb"
 	"github.com/BTBurke/wtf/proto"
 
 	"testing"
+
+	context "golang.org/x/net/context"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -23,6 +29,11 @@ func (m *mockSender) create(c *Command, reason proto.ReportReason) *pb.Report {
 func (m *mockSender) sendBackground(report *pb.Report, result chan error, cancel chan bool) {
 	m.Called()
 	result <- nil
+}
+
+func (m *mockSender) wait() {
+	m.Called()
+	return
 }
 
 func TestReportCreation(t *testing.T) {
@@ -140,4 +151,55 @@ func createMatches(t time.Duration, num int) []RuleMatch {
 		})
 	}
 	return rm
+}
+
+type mockError struct{}
+
+func (m mockError) ReportError(e error) {
+	return
+}
+
+type mockReportsServer struct {
+	mock.Mock
+}
+
+func (m *mockReportsServer) Create(ctx context.Context, rpt *pb.Report) (*pb.ReportAck, error) {
+	args := m.Called()
+	return args.Get(0).(*pb.ReportAck), args.Error(1)
+}
+
+func TestSendBackground(t *testing.T) {
+	c, errs := New([]string{"test"}, ID("test"), Insecure())
+	if len(errs) != 0 {
+		t.Fatalf("unexpected error creating cmd: %s", errs)
+	}
+
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", 34129))
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	mocks := new(mockReportsServer)
+	mocks.On("Create").Return(&pb.ReportAck{Success: true}, nil)
+
+	grpcServer := grpc.NewServer()
+	pb.RegisterReportsServer(grpcServer, mocks)
+	go grpcServer.Serve(lis)
+	defer grpcServer.Stop()
+
+	s := &senderService{
+		host:   "127.0.0.1",
+		port:   "34129",
+		errors: mockError{},
+	}
+	rpt := s.create(c, proto.Success)
+	result := make(chan error, 1)
+	cancel := make(chan bool, 1)
+	s.sendBackground(rpt, result, cancel)
+
+	select {
+	case err := <-result:
+		assert.Nil(t, err)
+		mocks.AssertExpectations(t)
+	}
+
 }

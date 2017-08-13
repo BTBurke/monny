@@ -82,6 +82,10 @@ func New(usercmd []string, options ...ConfigOption) (*Command, []error) {
 	}, nil
 }
 
+func (c *Command) Wait() error {
+	return c.report.Wait()
+}
+
 func (c *Command) Exec() error {
 	var cmd *exec.Cmd
 	wrappedCmd, cleanup, err := wrapComplexCommand(c.Config.Shell, c.UserCommand)

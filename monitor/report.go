@@ -5,9 +5,9 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/BTBurke/wtf/pb"
@@ -20,6 +20,7 @@ import (
 // ReportSender is an interface for sending reports
 type ReportSender interface {
 	Send(c *Command, reason proto.ReportReason)
+	Wait() error
 }
 
 // Report is a wrapper for sending a report via GRPC. See pb.Report for details.
@@ -31,6 +32,7 @@ type Report struct {
 type sender interface {
 	create(c *Command, reason proto.ReportReason) *pb.Report
 	sendBackground(report *pb.Report, result chan error, cancel chan bool)
+	wait()
 }
 
 // senderService implements the sender interface to send reports in the background using GRPC
@@ -40,6 +42,7 @@ type senderService struct {
 	timeout time.Duration
 	opts    []grpc.DialOption
 	errors  ErrorReporter
+	wg      sync.WaitGroup
 }
 
 // Create prepares a new report based on the current status of the command.
@@ -47,6 +50,8 @@ func (s *senderService) create(c *Command, reason proto.ReportReason) *pb.Report
 	pb := reportFromCommand(c, reason, s.errors.ReportError)
 	if c.Config.useTLS {
 		s.opts = append(s.opts, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{})))
+	} else {
+		s.opts = append(s.opts, grpc.WithInsecure())
 	}
 	return pb
 }
@@ -56,7 +61,6 @@ func (s *senderService) create(c *Command, reason proto.ReportReason) *pb.Report
 // in the background.  It will attempt to send a report for 1hr
 // using exponential backoff if the call fails.
 func (r *Report) Send(c *Command, reason proto.ReportReason) {
-	log.Printf("starting send for reason %s\n", reason)
 	c.mutex.Lock()
 	pb := r.sender.create(c, reason)
 	c.mutex.Unlock()
@@ -129,7 +133,6 @@ func (r *Report) Send(c *Command, reason proto.ReportReason) {
 		return
 	}
 
-	log.Printf("enter select for %s", reason.String())
 	select {
 	case err := <-result:
 		switch {
@@ -145,6 +148,16 @@ func (r *Report) Send(c *Command, reason proto.ReportReason) {
 	closeChannels()
 }
 
+func (r *Report) Wait() error {
+	r.sender.wait()
+	return nil
+}
+
+func (s *senderService) wait() {
+	s.wg.Wait()
+	return
+}
+
 // Send will transmit a report to the notification server using a go routine.
 // Errors will cause an exponential backoff until the call is successful or a timeout
 // is received from the parent.
@@ -153,6 +166,8 @@ func (s *senderService) sendBackground(report *pb.Report, result chan error, can
 		result <- fmt.Errorf("no report created")
 		return
 	}
+	s.wg.Add(1)
+	defer s.wg.Done()
 	send := func() error {
 		conn, err := grpc.Dial(net.JoinHostPort(s.host, s.port), s.opts...)
 		if err != nil {
