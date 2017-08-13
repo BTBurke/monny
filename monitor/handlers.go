@@ -68,6 +68,8 @@ func (h handler) Finished(c *Command, cmd *exec.Cmd) error {
 	return nil
 }
 
+// Signal is called when a signal is trapped.  The signal is passed on to the child process
+// and a report is sent.
 func (h handler) Signal(c *Command, cmd *exec.Cmd, sig os.Signal) error {
 	c.mutex.Lock()
 	c.Finish = time.Now()
@@ -85,6 +87,8 @@ func (h handler) Signal(c *Command, cmd *exec.Cmd, sig os.Signal) error {
 	return nil
 }
 
+// Timeout is called if the process runs longer than the kill timeout setting.
+// A report is sent and the process is killed.
 func (h handler) Timeout(c *Command, cmd *exec.Cmd) error {
 	c.mutex.Lock()
 	c.Killed = true
@@ -102,6 +106,7 @@ func (h handler) Timeout(c *Command, cmd *exec.Cmd) error {
 	return nil
 }
 
+// TimeWarning is called and a report is sent when the process runs longer than the time warning.
 func (h handler) TimeWarning(c *Command) error {
 	if c.timeWarnSent {
 		return nil
@@ -116,6 +121,9 @@ func (h handler) TimeWarning(c *Command) error {
 	return nil
 }
 
+// CheckMemory is called by default every second for short running processes and every 30 sec
+// for daemon processes.  If memory warnings or memory kill features are enabled, reports are
+// generated when memory exceeds the setpoint (Not available on Windows)
 func (h handler) CheckMemory(c *Command, cmd *exec.Cmd) error {
 	mem := calculateMemory(cmd.Process.Pid)
 	if mem > c.MaxMemory {
@@ -139,6 +147,7 @@ func (h handler) CheckMemory(c *Command, cmd *exec.Cmd) error {
 	return nil
 }
 
+// KillOnHighMemory is called when the memory exceeds the kill setpoint.
 func (h handler) KillOnHighMemory(c *Command, cmd *exec.Cmd) error {
 	c.mutex.Lock()
 	c.Killed = true
@@ -155,6 +164,8 @@ func (h handler) KillOnHighMemory(c *Command, cmd *exec.Cmd) error {
 	return nil
 }
 
+// handleFileCreation is called on process completion and checks for the existence of
+// files that should have been created if the configuration includes the created flag.
 func handleFileCreation(c *Command) {
 	for _, f := range c.Config.Creates {
 		finfo, err := os.Stat(f)

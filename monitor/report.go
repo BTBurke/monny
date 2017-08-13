@@ -37,12 +37,11 @@ type sender interface {
 
 // senderService implements the sender interface to send reports in the background using GRPC
 type senderService struct {
-	host    string
-	port    string
-	timeout time.Duration
-	opts    []grpc.DialOption
-	errors  ErrorReporter
-	wg      sync.WaitGroup
+	host   string
+	port   string
+	opts   []grpc.DialOption
+	errors ErrorReporter
+	wg     sync.WaitGroup
 }
 
 // Create prepares a new report based on the current status of the command.
@@ -59,7 +58,7 @@ func (s *senderService) create(c *Command, reason proto.ReportReason) *pb.Report
 // Send will send a report based on the current run status
 // of the command.  This is safe to call in a go routine to send
 // in the background.  It will attempt to send a report for 1hr
-// using exponential backoff if the call fails.
+// using exponential backoff if the call fails. (default)
 func (r *Report) Send(c *Command, reason proto.ReportReason) {
 	c.mutex.Lock()
 	pb := r.sender.create(c, reason)
@@ -148,6 +147,9 @@ func (r *Report) Send(c *Command, reason proto.ReportReason) {
 	closeChannels()
 }
 
+// Wait will cause the process to block until the report is finished sending in the background.
+// This function is typically called on the Command at the top level to prevent the client
+// from exiting.  See Command.Wait().
 func (r *Report) Wait() error {
 	r.sender.wait()
 	return nil
@@ -191,6 +193,8 @@ func (s *senderService) sendBackground(report *pb.Report, result chan error, can
 	}
 }
 
+// calcAlertRate determines if the rate of rule matches exceeds the limit in the
+// specified period
 func calcAlertRate(matches []RuleMatch, quantity int, period time.Duration) bool {
 	var matchesInPeriod int
 	now := time.Now()
