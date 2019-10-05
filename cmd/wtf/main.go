@@ -11,7 +11,7 @@ func main() {
 
 	usercmd, opts, err := monitor.ParseCommandLine()
 	if err != nil {
-		fmt.Printf("Could not parse configuration: %s\n\nUse xray --help for options\n", err)
+		fmt.Printf("Could not parse configuration: %s\n\nUse monny --help for options\n", err)
 		os.Exit(1)
 	}
 
