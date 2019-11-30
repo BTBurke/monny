@@ -1,4 +1,4 @@
-package monitor
+package monny
 
 import (
 	"io/ioutil"

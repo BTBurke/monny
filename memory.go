@@ -1,6 +1,6 @@
 // +build !windows
 
-package monitor
+package monny
 
 import (
 	"bufio"
