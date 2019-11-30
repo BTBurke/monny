@@ -12,6 +12,8 @@ import (
 // trace to identify the source of the problem.
 var SuppressErrorReporting bool
 
+// ErrorReporter batches errors in the monny client and sends them to an 
+// external crash reporting service to improve the quality of the client
 type ErrorReporter interface {
 	ReportError(err error)
 }
@@ -31,5 +33,7 @@ func init() {
 // ReportError will send the result of an unexpected error to Rollbar
 // to improve the quality of the client.  Data is anonymous.
 func (e errorService) ReportError(err error) {
-	rollbar.Error(rollbar.ERR, err)
+	if !SuppressErrorReporting {
+		rollbar.Error(rollbar.ERR, err)
+	}
 }

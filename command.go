@@ -60,12 +60,14 @@ type File struct {
 	Time time.Time
 }
 
+// RuleMatch holds a single regex match in the log output
 type RuleMatch struct {
 	Time  time.Time
 	Line  string
 	Index [][]int
 }
 
+// New prepares the user's command to execute as a forked process
 func New(usercmd []string, options ...ConfigOption) (*Command, []error) {
 	cfg, err := newConfig(options...)
 	if len(err) > 0 {
@@ -87,10 +89,14 @@ func New(usercmd []string, options ...ConfigOption) (*Command, []error) {
 	}, nil
 }
 
+// Wait blocks program termination until the user's command finishes and all potential
+// reports and metrics are transmitted to the server
 func (c *Command) Wait() error {
 	return c.report.Wait()
 }
 
+// Exec will execute the user's command in a forked process and monitor log output and process
+// metrics
 func (c *Command) Exec() error {
 	var cmd *exec.Cmd
 	wrappedCmd, cleanup, err := wrapComplexCommand(c.Config.Shell, c.UserCommand)
@@ -352,6 +358,7 @@ func wrapComplexCommand(shell string, args []string) ([]string, func() error, er
 	}
 }
 
+// Cleanup executes all callbacks registered to clean up monitoring of the process
 func (c *Command) Cleanup() (errs []error) {
 	for _, f := range c.cleanup {
 		if err := f(); err != nil {
