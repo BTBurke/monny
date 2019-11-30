@@ -83,7 +83,7 @@ func (h handler) Signal(c *Command, cmd *exec.Cmd, sig os.Signal) error {
 	if err := cmd.Process.Signal(sig); err != nil {
 		return err
 	}
-	fmt.Printf("\n\nProcess received signal: %s\n", sig.String())
+	//fmt.Printf("\n\nProcess received signal: %s\n", sig.String())
 	return nil
 }
 
@@ -102,7 +102,7 @@ func (h handler) Timeout(c *Command, cmd *exec.Cmd) error {
 	if err := cmd.Process.Signal(os.Kill); err != nil {
 		return err
 	}
-	fmt.Printf("\n\nProcess timeout\n")
+	//fmt.Printf("\n\nProcess timeout\n")
 	return nil
 }
 

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -46,6 +47,8 @@ type Command struct {
 	report       ReportSender
 	errors       ErrorReporter
 	cleanup      []func() error
+	out          io.WriteCloser
+	err          io.WriteCloser
 }
 
 // File represents an artifact that is produced by the process.
@@ -79,6 +82,8 @@ func New(usercmd []string, options ...ConfigOption) (*Command, []error) {
 				errors: errorService{},
 			},
 		},
+		out: cfg.out,
+		err: cfg.err,
 	}, nil
 }
 
@@ -122,14 +127,18 @@ func (c *Command) Exec() error {
 	go func() {
 		defer wg.Done()
 		for stdoutScanner.Scan() {
-			fmt.Fprintln(os.Stdout, stdoutScanner.Text())
+			if _, err := c.out.Write(stdoutScanner.Bytes()); err != nil {
+				c.errors.ReportError(fmt.Errorf("error writing log line to stdout: %+v", err))
+			}
 			c.processStdout(stdoutScanner.Bytes())
 		}
 	}()
 	go func() {
 		defer wg.Done()
 		for stderrScanner.Scan() {
-			fmt.Fprintln(os.Stderr, stderrScanner.Text())
+			if _, err := c.err.Write(stderrScanner.Bytes()); err != nil {
+				c.errors.ReportError(fmt.Errorf("error writing log line to stderr: %+v", err))
+			}
 			c.processStderr(stderrScanner.Bytes())
 		}
 	}()
@@ -159,6 +168,8 @@ func (c *Command) Exec() error {
 	go func() {
 		wg.Wait()
 		cmd.Wait()
+		c.out.Close()
+		c.err.Close()
 		runFinished <- true
 	}()
 
@@ -324,7 +335,7 @@ func wrapComplexCommand(shell string, args []string) ([]string, func() error, er
 		if err != nil {
 			return args, nil, err
 		}
-		f, err := ioutil.TempFile(wd, "xrayo")
+		f, err := ioutil.TempFile(wd, "monny")
 		if err != nil {
 			return args, nil, err
 		}

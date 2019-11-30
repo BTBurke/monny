@@ -1,7 +1,9 @@
 package monitor
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"os/exec"
@@ -79,20 +81,28 @@ func TestHandlerCalls(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.Name, func(t *testing.T) {
-			opts := append(tc.Options, ID("test"))
+			r, w := io.Pipe()
+			go func() {
+				buf := new(bytes.Buffer)
+				buf.ReadFrom(r)
+				r.Close()
+			}()
+			opts := append(tc.Options, ID("test"), logOut(w), logErr(w))
 			cfg, err := newConfig(opts...)
 			if err != nil {
 				t.Fatalf("unexpected error in config: %s", err)
 			}
-
 			mocks := new(mockHandlers)
 			mockRpt := new(mockReport)
+
 			c := &Command{
 				Config:      cfg,
 				UserCommand: strings.Split(tc.Cmd, " "),
 				handler:     mocks,
 				// Report calls not tested here, mocked only to prevent external calls
 				report: mockRpt,
+				err:    w,
+				out:    w,
 			}
 
 			for idx, handler := range tc.Handlers {
@@ -106,7 +116,7 @@ func TestHandlerCalls(t *testing.T) {
 				t.Fatalf("unexpected cleanup error: %s", err)
 			}
 
-			mocks.AssertExpectations(t)
+			mocks.AssertExpectations(silenceT(t))
 		})
 	}
 }
@@ -133,7 +143,13 @@ func TestIntegration(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.Name, func(t *testing.T) {
-			opts := append(tc.Options, ID("test"))
+			r, w := io.Pipe()
+			go func() {
+				buf := new(bytes.Buffer)
+				buf.ReadFrom(r)
+				r.Close()
+			}()
+			opts := append(tc.Options, ID("test"), logErr(w), logOut(w))
 			c, err := New(strings.Split(tc.Cmd, " "), opts...)
 			if err != nil {
 				t.Fatalf("unexpected error setting config: %s", err)
@@ -155,6 +171,7 @@ func TestIntegration(t *testing.T) {
 			if tc.Cleanup != nil {
 				tc.Cleanup()
 			}
+
 		})
 	}
 }
@@ -240,7 +257,13 @@ func TestRules(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.Name, func(t *testing.T) {
-			opts := append(tc.Options, ID("test"))
+			r, w := io.Pipe()
+			go func() {
+				buf := new(bytes.Buffer)
+				buf.ReadFrom(r)
+				r.Close()
+			}()
+			opts := append(tc.Options, ID("test"), logErr(w), logOut(w))
 			c, err := New([]string{"echo", "\"" + strings.Replace(strings.Join(tc.Stdout, "\n"), "\"", "\\\"", -1) + "\""}, opts...)
 			if err != nil {
 				t.Fatalf("unexpected error in config: %s", err)

@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
@@ -37,6 +38,8 @@ type Config struct {
 	host   string
 	port   string
 	useTLS bool
+	out    io.WriteCloser
+	err    io.WriteCloser
 }
 
 type rule struct {
@@ -61,6 +64,8 @@ func newConfig(options ...ConfigOption) (Config, []error) {
 		host:            api,
 		port:            port,
 		useTLS:          true,
+		out:             os.Stdout,
+		err:             os.Stderr,
 	}
 
 	var errors []error
@@ -332,6 +337,32 @@ func Shell(shell string) ConfigOption {
 			return err
 		}
 		c.Shell = path
+		return nil
+	}
+}
+
+// LogFile sends Stdout and Stderr to log rotated files in the given directory.  It will create the
+// directory if it does not exist.  An error will be returned if the user does not have write permission
+// to create (if the directory does not already exist) or write to the directory.
+func LogFile(dir string) ConfigOption {
+	return func(c *Config) error {
+		// TODO: add log rotator
+		return nil
+	}
+}
+
+// logOut redirects Stdout to out
+func logOut(out io.WriteCloser) ConfigOption {
+	return func(c *Config) error {
+		c.out = out
+		return nil
+	}
+}
+
+// logErr redirects Stderr to err
+func logErr(err io.WriteCloser) ConfigOption {
+	return func(c *Config) error {
+		c.err = err
 		return nil
 	}
 }

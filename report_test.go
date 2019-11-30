@@ -74,7 +74,7 @@ func TestReportCreation(t *testing.T) {
 
 		r.Send(testConfig, tc.Reason)
 
-		mocks.AssertExpectations(t)
+		mocks.AssertExpectations(silenceT(t))
 		assert.EqualValues(t, expectConfig, testConfig)
 	}
 }
@@ -199,7 +199,7 @@ func TestSendBackground(t *testing.T) {
 	select {
 	case err := <-result:
 		assert.Nil(t, err)
-		mocks.AssertExpectations(t)
+		mocks.AssertExpectations(silenceT(t))
 	}
 
 }

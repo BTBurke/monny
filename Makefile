@@ -1,5 +1,5 @@
 PB_PACKAGE=pb
-PROTO_SRC_DIR=proto/monitor
+PROTO_SRC_DIR=proto/**
 PROTOC_BIN=$(GOPATH)/bin/protoc
 
 proto:
