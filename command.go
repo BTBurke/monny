@@ -16,7 +16,7 @@ import (
 
 	"time"
 
-	"github.com/BTBurke/wtf/proto"
+	"github.com/BTBurke/monny/proto"
 )
 
 // Command represents the current state of process execution

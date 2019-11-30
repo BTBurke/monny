@@ -4,18 +4,18 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/BTBurke/wtf/monitor"
+	"github.com/BTBurke/monny"
 )
 
 func main() {
 
-	usercmd, opts, err := monitor.ParseCommandLine()
+	usercmd, opts, err := monny.ParseCommandLine()
 	if err != nil {
 		fmt.Printf("Could not parse configuration: %s\n\nUse monny --help for options\n", err)
 		os.Exit(1)
 	}
 
-	cmd, errs := monitor.New(usercmd, opts...)
+	cmd, errs := monny.New(usercmd, opts...)
 	if len(errs) > 0 {
 		fmt.Println("Error in config:")
 		for _, e := range errs {

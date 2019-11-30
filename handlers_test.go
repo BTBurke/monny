@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/BTBurke/wtf/proto"
+	"github.com/BTBurke/monny/proto"
 	"github.com/stretchr/testify/mock"
 )
 
