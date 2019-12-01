@@ -7,8 +7,8 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/BTBurke/monny/pb"
-	"github.com/BTBurke/monny/proto"
+	"github.com/BTBurke/monny/pkg/pb"
+	"github.com/BTBurke/monny/pkg/proto"
 
 	"testing"
 

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/BTBurke/monny/proto"
+	"github.com/BTBurke/monny/pkg/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )

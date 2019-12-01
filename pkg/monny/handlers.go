@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/BTBurke/monny/proto"
+	"github.com/BTBurke/monny/pkg/proto"
 )
 
 // ProcessHandlers is an interface for methods called based on the current

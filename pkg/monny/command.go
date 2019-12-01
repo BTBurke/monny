@@ -16,7 +16,7 @@ import (
 
 	"time"
 
-	"github.com/BTBurke/monny/proto"
+	"github.com/BTBurke/monny/pkg/proto"
 )
 
 // Command represents the current state of process execution

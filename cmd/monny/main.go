@@ -1,11 +1,11 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
-	"errors"
 
-	"github.com/BTBurke/monny"
+	"github.com/BTBurke/monny/pkg/monny"
 	"github.com/spf13/pflag"
 )
 

@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/BTBurke/monny/pb"
-	"github.com/BTBurke/monny/proto"
+	"github.com/BTBurke/monny/pkg/pb"
+	"github.com/BTBurke/monny/pkg/proto"
 	"github.com/cenkalti/backoff"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
