@@ -72,7 +72,7 @@ func TestHandlerCalls(t *testing.T) {
 		Error    []error
 	}{
 		{Name: "finished success", Cmd: "echo test", Handlers: []string{"Finished"}, Error: []error{nil}},
-		{Name: "finished fail", Cmd: "exit(-1)", Handlers: []string{"Finished"}, Error: []error{nil}},
+		{Name: "finished fail", Cmd: "sh -c 'exit 1'", Handlers: []string{"Finished"}, Error: []error{nil}},
 		{Name: "mem check", Cmd: "sleep 1", Handlers: []string{"CheckMemory", "Finished"}, Error: []error{nil, nil}},
 		{Name: "mem kill", Cmd: "sleep 5", Options: []ConfigOption{MemoryKill("1K")}, Handlers: []string{"CheckMemory", "KillOnHighMemory"}, Error: []error{fmt.Errorf("high mem kill"), nil}},
 		{Name: "time warning", Cmd: "sleep 1", Options: []ConfigOption{NotifyTimeout("200ms")}, Handlers: []string{"CheckMemory", "Finished", "TimeWarning"}, Error: []error{nil, nil, nil}},
@@ -133,8 +133,8 @@ func TestIntegration(t *testing.T) {
 		Duration     time.Duration
 		Cleanup      func()
 	}{
-		{Name: "capture stdout", Cmd: "echo start && sleep 1 && echo end", Stdout: []string{"start", "end"}, ReportReason: proto.Success, Duration: time.Duration(1 * time.Second)},
-		{Name: "get failure exit code", Cmd: "exit(-1)", ReportReason: proto.Failure},
+		{Name: "capture stdout", Cmd: "echo start", Stdout: []string{"start"}, ReportReason: proto.Success},
+		{Name: "get failure exit code", Cmd: "sh -c 'exit 1'", ReportReason: proto.Failure},
 		{Name: "kill on timeout", Cmd: "sleep 3", Options: []ConfigOption{KillTimeout("200ms")}, ReportReason: proto.Killed, KillReason: proto.Timeout, Duration: time.Duration(200 * time.Millisecond)},
 		{Name: "kill on memory", Cmd: "sleep 3", Options: []ConfigOption{MemoryKill("1K")}, ReportReason: proto.Killed, KillReason: proto.Memory},
 		{Name: "file creation success", Cmd: "touch testfile.test", Options: []ConfigOption{Creates("testfile.test")}, ReportReason: proto.Success, Cleanup: func() { os.Remove("testfile.test") }},
@@ -264,7 +264,9 @@ func TestRules(t *testing.T) {
 				r.Close()
 			}()
 			opts := append(tc.Options, ID("test"), logErr(w), logOut(w))
-			c, err := New([]string{"echo", "\"" + strings.Replace(strings.Join(tc.Stdout, "\n"), "\"", "\\\"", -1) + "\""}, opts...)
+			//c, err := New([]string{"echo", strings.Replace(strings.Join(tc.Stdout, "\n"), "\"", "\\\"", -1)}, opts...)
+			c, err := New([]string{"echo", strings.Join(tc.Stdout, "\n")}, opts...)
+
 			if err != nil {
 				t.Fatalf("unexpected error in config: %s", err)
 			}

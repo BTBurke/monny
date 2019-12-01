@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"os/signal"
-	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -111,6 +109,10 @@ func (c *Command) Exec() error {
 	default:
 		cmd = exec.Command(wrappedCmd[0], wrappedCmd[1:]...)
 	}
+	stdinWriter, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
 	stdoutReader, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -129,13 +131,29 @@ func (c *Command) Exec() error {
 	c.pid = os.Getpid()
 
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		defer stdinWriter.Close()
+		// determine if a monny is after a previous piped process, copy to forked process stdin if necessary
+		fi, err := os.Stdin.Stat()
+		if err != nil {
+			c.errors.ReportError(fmt.Errorf("failed to get stdin properties: %+v", err))
+		}
+		if fi.Mode()&os.ModeNamedPipe != 0 {
+			_, err := io.Copy(stdinWriter, os.Stdin)
+			if err != nil {
+				c.errors.ReportError(fmt.Errorf("error writing to stdin: %+v", err))
+			}
+		}
+	}()
 	go func() {
 		defer wg.Done()
 		for stdoutScanner.Scan() {
 			if _, err := c.out.Write(stdoutScanner.Bytes()); err != nil {
 				c.errors.ReportError(fmt.Errorf("error writing log line to stdout: %+v", err))
 			}
+			c.out.Write([]byte{'\n'})
 			c.processStdout(stdoutScanner.Bytes())
 		}
 	}()
@@ -145,6 +163,7 @@ func (c *Command) Exec() error {
 			if _, err := c.err.Write(stderrScanner.Bytes()); err != nil {
 				c.errors.ReportError(fmt.Errorf("error writing log line to stderr: %+v", err))
 			}
+			c.err.Write([]byte{'\n'})
 			c.processStderr(stderrScanner.Bytes())
 		}
 	}()
@@ -176,6 +195,7 @@ func (c *Command) Exec() error {
 		cmd.Wait()
 		c.out.Close()
 		c.err.Close()
+		c.Cleanup()
 		runFinished <- true
 	}()
 
@@ -323,47 +343,55 @@ func (c *Command) processStderr(line []byte) {
 }
 
 func wrapComplexCommand(shell string, args []string) ([]string, func() error, error) {
-	r := regexp.MustCompile("(&&|\x7C|<|>)")
+	return args, nil, nil
+	// r := regexp.MustCompile(`(&|\x7C|<|>)`)
 
-	var match []byte
-	for _, arg := range args {
-		match = r.Find([]byte(arg))
-		if match != nil {
-			break
-		}
-	}
+	// var match bool
+	// for _, arg := range args {
+	// 	match = r.MatchString(arg)
+	// 	if match {
+	// 		break
+	// 	}
+	// }
 
-	switch match {
-	case nil:
-		return args, nil, nil
-	default:
-		wd, err := os.Getwd()
-		if err != nil {
-			return args, nil, err
-		}
-		f, err := ioutil.TempFile(wd, "monny")
-		if err != nil {
-			return args, nil, err
-		}
-		if _, err := f.Write([]byte(strings.Join(args, " "))); err != nil {
-			return args, nil, err
-		}
-		if err := f.Chmod(os.ModePerm); err != nil {
-			return args, nil, err
-		}
-		if err := f.Close(); err != nil {
-			return args, nil, err
-		}
-		return []string{shell, f.Name()}, func() error { return os.Remove(f.Name()) }, nil
-	}
+	// switch match {
+	// case false:
+	// 	return args, nil, nil
+	// default:
+	// 	wd, err := os.Getwd()
+	// 	if err != nil {
+	// 		return args, nil, err
+	// 	}
+	// 	f, err := ioutil.TempFile(wd, "monny")
+	// 	if err != nil {
+	// 		return args, nil, err
+	// 	}
+	// 	if _, err := f.Write([]byte(strings.Join(args, " "))); err != nil {
+	// 		return args, nil, err
+	// 	}
+	// 	if err := f.Chmod(os.ModePerm); err != nil {
+	// 		return args, nil, err
+	// 	}
+	// 	if err := f.Close(); err != nil {
+	// 		return args, nil, err
+	// 	}
+	// 	return []string{shell, f.Name()}, func() error { return os.Remove(f.Name()) }, nil
+	// }
 }
 
 // Cleanup executes all callbacks registered to clean up monitoring of the process
-func (c *Command) Cleanup() (errs []error) {
+func (c *Command) Cleanup() []error {
+	var errs []error
+	if len(c.cleanup) == 0 {
+		return errs
+	}
 	for _, f := range c.cleanup {
+		if f == nil {
+			continue
+		}
 		if err := f(); err != nil {
 			errs = append(errs, err)
 		}
 	}
-	return
+	return errs
 }

@@ -52,19 +52,6 @@ func (h handler) Finished(c *Command, cmd *exec.Cmd) error {
 		go c.report.Send(c, proto.Failure)
 	}
 	handleFileCreation(c)
-
-	// fmt.Printf("\n\nProcess finished, Received:\nStdout: %d lines\nStderr: %d lines\nDuration: %s\nMax Memory: %d\nReason: %s\n",
-	// 	len(c.Stdout),
-	// 	len(c.Stderr),
-	// 	c.Duration.String(),
-	// 	c.MaxMemory,
-	// 	c.ReportReason)
-	// for _, match := range c.RuleMatches {
-	// 	fmt.Printf("Match: %s\n", match.Line)
-	// }
-	// for _, e := range c.Messages {
-	// 	fmt.Printf("Error: %s\n", e)
-	// }
 	return nil
 }
 

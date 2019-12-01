@@ -7,3 +7,6 @@ proto:
 
 test:
 	go test -v -cover -race ./...
+
+build:
+	go build -o monny ./cmd/monny/main.go
