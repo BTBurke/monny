@@ -34,11 +34,11 @@ func parse(args []string, pf *pflag.FlagSet) ([]string, []ConfigOption, error) {
 }
 
 func createFlagSet() *pflag.FlagSet {
-	pf := pflag.NewFlagSet("xray", pflag.ContinueOnError)
+	pf := pflag.NewFlagSet("monny", pflag.ContinueOnError)
 	pf.Usage = func() {
-		fmt.Printf("Usage of xray:\nxray -i <identifier> <options> mycommand\nxray -i <identifier> <options> -- mycommand <mycommand-options>\n")
+		fmt.Printf("Usage of monny:\nmonny -i <identifier> <options> mycommand\nmonny -i <identifier> <options> -- mycommand <mycommand-options>\n")
 		fmt.Printf("\n%s", pf.FlagUsagesWrapped(10))
-		fmt.Printf("\n\nFor unknown flag errors, add an empty flag separator (--) between the flags for xray and your command.  Example:\n\nxray -i id -c config.yml -- mycommand --otherflag\n")
+		fmt.Printf("\n\nFor unknown flag errors, add an empty flag separator (--) between the flags for monny and your command.  Example:\n\nmonny -i id -c config.yml -- mycommand --otherflag\n")
 	}
 
 	pf.StringP("id", "i", "", "Identifier for this monitor (required)")

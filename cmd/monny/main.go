@@ -3,15 +3,19 @@ package main
 import (
 	"fmt"
 	"os"
+	"errors"
 
 	"github.com/BTBurke/monny"
+	"github.com/spf13/pflag"
 )
 
 func main() {
 
 	usercmd, opts, err := monny.ParseCommandLine()
 	if err != nil {
-		fmt.Printf("Could not parse configuration: %s\n\nUse monny --help for options\n", err)
+		if !errors.Is(err, pflag.ErrHelp) {
+			fmt.Printf("Could not parse configuration: %s\n\nUse monny --help for options\n", err)
+		}
 		os.Exit(1)
 	}
 
