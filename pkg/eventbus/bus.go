@@ -40,15 +40,24 @@ func New() *EventBus {
 	}
 }
 
+// ShutdownFunc tells the event bus that this subscriber has finished the shutdown process and it is safe to exit
+type ShutdownFunc func()
+
 // Subscribe will register a subscriber to 0 or more topics.  If no topic is defined, the subscriber will added to the default channel and receive all
 // events published on any channel.  The default channel acts like a multicast channel so events published on other topics
 // also are received by default channel subscribers.
 //
-// The subscriber receives two channels, the first channel will receive events and will be closed when the event bus is shut down.
-// Subscribers should detect a closed event channel and //interpret that as a shutdown signal.  When the channel is closed,
-// subscribers should wait for any existing go routines to exit and then close the second channel (done channel) to indicate
-// that the subscriber has finished all work.
-func (e *EventBus) Subscribe(topics ...Topic) (chan Event, chan struct{}) {
+// The subscriber receives a channel to receive events and a shutdown function. The event channel will be closed when the event bus is shut down.
+// Subscribers should detect a closed event channel and interpret that as a shutdown signal.  When the channel is closed,
+// subscribers should wait for any existing go routines to exit and then call the ShutdownFunc to indicate
+// that the subscriber has finished all work.  It is safe to defer the ShutdownFunc at the top of your event handler to ensure that
+// the event bus knows when your subscriber has exited.
+func (e *EventBus) Subscribe(topics ...Topic) (chan Event, ShutdownFunc) {
+	c, d := e.subscribe(topics...)
+	return c, func() { defer recover(); close(d) }
+}
+
+func (e *EventBus) subscribe(topics ...Topic) (chan Event, chan struct{}) {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 
@@ -82,6 +91,7 @@ func (e *EventBus) Unsubscribe(c chan Event, done chan struct{}) {
 		for i, ch := range chs {
 			if ch == c {
 				close(ch)
+				recover()
 				e.subscribers[topic] = append(e.subscribers[topic][0:i], e.subscribers[topic][i+1:]...)
 			}
 		}
@@ -90,6 +100,7 @@ func (e *EventBus) Unsubscribe(c chan Event, done chan struct{}) {
 	for i, d := range e.done {
 		if d == done {
 			close(d)
+			recover()
 			e.done = append(e.done[0:i], e.done[i+1:]...)
 		}
 	}
@@ -117,7 +128,10 @@ func (e *EventBus) Dispatch(event Event, topics ...Topic) {
 
 		go func(event Event, chs []chan Event) {
 			for _, ch := range chs {
-				ch <- event
+				// run in go func so that if channel is closed by subscriber improperly or
+				// blocks because channel buffer is full it won't prevent other subscribers
+				// from receiving the event
+				go func(e Event, c chan Event) { c <- e }(event, ch)
 			}
 		}(event, chs)
 	}
@@ -136,8 +150,12 @@ func (e *EventBus) Shutdown(ctx context.Context) error {
 
 	for _, chs := range e.subscribers {
 		for _, ch := range chs {
-			// close all subscriber channels to signal shutdown
+			// close all subscriber channels to signal shutdown, recover above in case
+			// one of the channels is closed improperly by subscriber which would cause a panic
 			close(ch)
+			if r := recover(); r != nil {
+				continue
+			}
 		}
 	}
 

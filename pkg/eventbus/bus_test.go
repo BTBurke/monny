@@ -59,7 +59,7 @@ func TestSubscribe(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.Name, func(t *testing.T) {
 			event := New()
-			c, d := event.Subscribe(tc.Topics...)
+			c, d := event.subscribe(tc.Topics...)
 			for topic, chs := range event.subscribers {
 				switch {
 				case contains(topic, tc.Expected):
@@ -81,10 +81,10 @@ func TestSubscribe(t *testing.T) {
 
 func TestUnsubscribe(t *testing.T) {
 	e := New()
-	c1, d1 := e.Subscribe()
-	c2, d2 := e.Subscribe()
-	c3, d3 := e.Subscribe(Topic("test"))
-	c4, d4 := e.Subscribe(Topic("test"))
+	c1, d1 := e.subscribe()
+	c2, d2 := e.subscribe()
+	c3, d3 := e.subscribe(Topic("test"))
+	c4, d4 := e.subscribe(Topic("test"))
 
 	e.Unsubscribe(c1, d1)
 	assert.Equal(t, e.subscribers[defaultTopic], []chan Event{c2})
@@ -135,18 +135,18 @@ func TestDispatch(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.Name, func(t *testing.T) {
 			e := New()
-			cd, _ := e.Subscribe()
+			cd, _ := e.subscribe()
 			defaultSubscriber := receiver(cd)
 
 			if tc.ExpectTopic {
-				c, _ := e.Subscribe(tc.Subscribe...)
+				c, _ := e.subscribe(tc.Subscribe...)
 				topicSubscriber := receiver(c)
 				e.Dispatch(event, tc.Dispatch...)
 				assert.Equal(t, event, topicSubscriber())
 				assert.Equal(t, event, defaultSubscriber())
 			} else {
 				if len(tc.Subscribe) > 0 {
-					c, _ := e.Subscribe(tc.Subscribe...)
+					c, _ := e.subscribe(tc.Subscribe...)
 					topicSubscriber := receiver(c)
 					e.Dispatch(event, tc.Dispatch...)
 					// give time to dispatch before closing channel to prevent panic caused by
@@ -165,12 +165,12 @@ func TestDispatch(t *testing.T) {
 }
 
 func TestShutdown(t *testing.T) {
-	receiver := func(c chan Event, d chan struct{}) {
+	receiver := func(c chan Event, sd ShutdownFunc) {
 		select {
 		case _, ok := <-c:
 			if !ok {
+				defer sd()
 				time.Sleep(200 * time.Millisecond)
-				close(d)
 				return
 			}
 		}
@@ -189,8 +189,8 @@ func TestShutdown(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			e := New()
 			for i := 0; i < 100; i++ {
-				c, d := e.Subscribe()
-				go receiver(c, d)
+				c, sd := e.Subscribe()
+				go receiver(c, sd)
 			}
 			time.Sleep(500 * time.Millisecond)
 			ctx, cancel := context.WithTimeout(context.Background(), tc.Timeout)
