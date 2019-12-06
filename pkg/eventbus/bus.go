@@ -2,19 +2,8 @@ package eventbus
 
 import (
 	"context"
-	"fmt"
 	"sync"
 )
-
-// EventType represents the type of event being passed on the bus.  It allows handlers receiving the event to
-// to properly unmarshal the data or decide if processing is required
-type EventType string
-
-// Event is passed on the event bus to every subscriber on the channel
-type Event struct {
-	EventType EventType
-	Data      interface{}
-}
 
 // Topic creates a group of subscribers that only receive events published to that channel
 type Topic string
@@ -161,7 +150,7 @@ func (e *EventBus) Shutdown(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		return fmt.Errorf("eventbus: context timeout or cancelled before all subscribers exited")
+		return ErrShutdownTimeout
 	case <-done:
 		return nil
 	}
