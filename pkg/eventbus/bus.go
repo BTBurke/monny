@@ -32,6 +32,16 @@ func New() *EventBus {
 // ShutdownFunc tells the event bus that this subscriber has finished the shutdown process and it is safe to exit
 type ShutdownFunc func()
 
+type doneCloser struct {
+	once sync.Once
+	d    chan struct{}
+}
+
+// atomic close to prevent race condition on shutdown and receive value at same time
+func (s *doneCloser) close() {
+	s.once.Do(func() { close(s.d) })
+}
+
 // Subscribe will register a subscriber to 0 or more topics.  If no topic is defined, the subscriber will added to the default channel and receive all
 // events published on any channel.  The default channel acts like a multicast channel so events published on other topics
 // also are received by default channel subscribers.
@@ -43,7 +53,8 @@ type ShutdownFunc func()
 // the event bus knows when your subscriber has exited.
 func (e *EventBus) Subscribe(topics ...Topic) (chan Event, ShutdownFunc) {
 	c, d := e.subscribe(topics...)
-	return c, func() { defer recover(); close(d) }
+	s := &doneCloser{d: d}
+	return c, func() { s.close() }
 }
 
 func (e *EventBus) subscribe(topics ...Topic) (chan Event, chan struct{}) {
