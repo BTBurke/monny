@@ -18,7 +18,7 @@ endif
 test:
 > go test -v -cover -race ./...
 
-dist/monny: $(shell find . -name '*.go' -type f)
+dist/monny: $(shell find . -name '*.go' -type f) .make-proto
 > mkdir -p $(@D)
 > go build -o dist/monny ./cmd/monny/main.go
 
