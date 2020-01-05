@@ -19,6 +19,7 @@ type EventBus struct {
 	subscribers map[Topic][]chan Event
 	done        []chan struct{}
 	mutex       sync.RWMutex
+	sdStarted   bool
 }
 
 // New returns a new event bus.  A default topic is created, but subscribers may create other topics
@@ -112,6 +113,11 @@ func (e *EventBus) Dispatch(event Event, topics ...Topic) {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
 
+	// if shutdown already started prior to this lock but subscribers have not closed yet, return early
+	if e.sdStarted {
+		return
+	}
+
 	// always send to the defaultTopic even if other topics specified
 	topics = append(topics, defaultTopic)
 
@@ -131,7 +137,19 @@ func (e *EventBus) Dispatch(event Event, topics ...Topic) {
 				// run in go func so that if channel is closed by subscriber improperly or
 				// blocks because channel buffer is full it won't prevent other subscribers
 				// from receiving the event
-				go func(e Event, c chan Event) { c <- e }(event, ch)
+
+				// this will pessimistically lock the send channel in case the event bus is behind in sending
+				// events and shutdown has started.  Events will be silently dropped if shutdown is called and there
+				// are still pending events because subscribers are blocking.
+				go func(evt Event, c chan Event) {
+					e.mutex.RLock()
+					defer e.mutex.RUnlock()
+					if e.sdStarted {
+						return
+					}
+					defer recover()
+					c <- evt
+				}(event, ch)
 			}
 		}(event, chs)
 	}
@@ -144,6 +162,7 @@ func (e *EventBus) Dispatch(event Event, topics ...Topic) {
 func (e *EventBus) Shutdown(ctx context.Context) error {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
+	e.sdStarted = true
 
 	done := make(chan struct{})
 	go shutdownNotify(done, append([]chan struct{}{}, e.done...))
