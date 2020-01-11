@@ -2,7 +2,6 @@ package proc
 
 import (
 	"context"
-	"log"
 	"testing"
 	"time"
 
@@ -19,9 +18,7 @@ func TestTicker(t *testing.T) {
 
 	i := 0
 	go func(ch chan eventbus.Event, count *int) {
-		log.Printf("starting receiver")
 		for e := range ch {
-			log.Printf("received %v\n", e)
 			*count++
 			assert.Equal(t, e, eventbus.Event{EventType: evt})
 		}
