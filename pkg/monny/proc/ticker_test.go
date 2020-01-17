@@ -26,6 +26,8 @@ func TestTicker(t *testing.T) {
 	}(c, &i)
 	NewTicker(d, eb, evt)
 	time.Sleep(1 * time.Second)
-	_ = eb.Shutdown(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+	_ = eb.Shutdown(ctx)
 	assert.NotZero(t, i)
 }
