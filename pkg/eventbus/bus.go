@@ -5,8 +5,15 @@ import (
 	"sync"
 )
 
+var _ EventDispatcher = &EventBus{}
+
 // Topic creates a group of subscribers that only receive events published to that channel
 type Topic string
+
+// EventDispatcher is an interface for functions that only emit events to the bus
+type EventDispatcher interface {
+	Dispatch(e Event, t ...Topic)
+}
 
 const (
 	defaultTopic Topic = "__default__"

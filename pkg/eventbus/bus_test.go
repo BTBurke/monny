@@ -118,9 +118,7 @@ func TestDispatch(t *testing.T) {
 			}
 		}
 	}
-	event := Event{
-		EventType: EventType("test"),
-	}
+	event, _ := NewEvent(EventType("test"), nil)
 	tt := []struct {
 		Name        string
 		Subscribe   []Topic

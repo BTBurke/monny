@@ -7,12 +7,21 @@ import (
 	"os/exec"
 )
 
+// LogProcessorOption overrides default behavior.  Options are applied in a defined order
+// no matter the order in which they are passed to the constructor so that principle of least
+// surprise applies.
+type LogProcessorOption interface {
+	apply(*logProcOpt) error
+	priority() priority
+}
+
 type logProcOpt struct {
 	hist    int
 	sources []source
 	sinks   []sink
 }
 
+// sourceOrSink for monny, either from the wrapped process or the monny process itself
 type sourceOrSink int
 
 // all possible sources and sinks, pX means the wrapped or piped process channels
@@ -30,9 +39,45 @@ const (
 	logfile
 )
 
+func (s sourceOrSink) String() string {
+	switch s {
+	case pStdout:
+		return "Process Stdout"
+	case pStderr:
+		return "Process Stderr"
+	case pStdin:
+		return "Process Stdin"
+	case mStdout:
+		return "Monny Stdout"
+	case mStderr:
+		return "Monny Stderr"
+	case mStdin:
+		return "Monny Stdin"
+	case logfile:
+		return "Logfile"
+	default:
+		return ""
+	}
+}
+
+// a configured source with its own embedded queue for returning history
+type source struct {
+	name sourceOrSink
+	q    *Queue
+	in   io.Reader
+}
+
+// a configured sink for writing processed logs
+type sink struct {
+	name sourceOrSink
+	out  io.WriteCloser
+}
+
 // option priority matters for overriding default behavior
 type priority int
 
+// Option priorties here should be listed in order of application.  Some options change behavior
+// when modified by subsequent options
 const (
 	history priority = iota
 	command
@@ -43,24 +88,14 @@ const (
 	noStderrIn
 )
 
-type source struct {
-	name sourceOrSink
-	q    *Queue
-	in   io.Reader
+// options should return an optF struct to apply the option and declare its priority to the constructor
+type optF struct {
+	f   func(*logProcOpt) error
+	pri priority
 }
 
-type sink struct {
-	name sourceOrSink
-	out  io.WriteCloser
-}
-
-// LogProcessorOption overrides default behavior.  Options are applied in a defined order
-// no matter the order in which they are passed to the constructor so that principle of least
-// surprise applies.
-type LogProcessorOption interface {
-	apply(*logProcOpt) error
-	priority() priority
-}
+func (o optF) apply(l *logProcOpt) error { return o.f(l) }
+func (o optF) priority() priority        { return o.pri }
 
 // WithHistory controls how much of the most recent log source is retained and reported when
 // an alert is generated.  It applies by default to all configured log sources (e.g., to Stdout and
@@ -71,15 +106,6 @@ func WithHistory(hist int) LogProcessorOption {
 		pri: history,
 	}
 }
-
-// options should return an optF struct to apply the option and declare its priority to the constructor
-type optF struct {
-	f   func(*logProcOpt) error
-	pri priority
-}
-
-func (o optF) apply(l *logProcOpt) error { return o.f(l) }
-func (o optF) priority() priority        { return o.pri }
 
 // WithCommand will configure log sources and sinks based on the defined command.  This will determine which
 // log sources should be parsed depending on whether monny wraps a forked process or is run as a piped process
