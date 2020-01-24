@@ -20,7 +20,9 @@ func TestTicker(t *testing.T) {
 	go func(ch chan eventbus.Event, count *int) {
 		for e := range ch {
 			*count++
-			assert.Equal(t, e, eventbus.Event{EventType: evt})
+			expect, err := eventbus.NewEvent(evt, nil)
+			assert.NoError(t, err)
+			assert.Equal(t, expect, e)
 		}
 		finished()
 	}(c, &i)

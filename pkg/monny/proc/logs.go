@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/BTBurke/monny/pkg/eventbus"
 )
@@ -15,12 +16,13 @@ const (
 	// listen for LogLine events.
 	LogLine  = eventbus.EventType("log_line")
 	LogTopic = eventbus.Topic("log_topic")
-
-	// SinkError and ScanError are events dispatched on the ErrorTopic for errors encountered during processing
-	SinkError  = eventbus.EventType("sink_error")
-	ScanError  = eventbus.EventType("scan_error")
-	ErrorTopic = eventbus.Topic("error_topic")
 )
+
+// LogEvent is the payload for the message sent on the bus
+type LogEvent struct {
+	Timestamp time.Time
+	Line      []byte
+}
 
 // LogProcessor processes configured log sources and emits processed log lines to configured sinks.  Call Wait()
 // to ensure that all log lines have been processed before shutting down.  This processor does not monitor a closed
@@ -75,11 +77,19 @@ func startLogEmitter(bus eventbus.EventDispatcher, src source, sinks []sink, don
 		data := scanner.Bytes()
 		src.q.Add(string(data))
 
-		bus.Dispatch(eventbus.Event{LogLine, data}, LogTopic)
+		payload := LogEvent{
+			Timestamp: time.Now().UTC(),
+			Line:      data,
+		}
+		evt, err := eventbus.NewEvent(LogLine, payload)
+		if err != nil {
+			newError(bus, EventError{fmt.Errorf("unable to construct log event: %v", err)})
+		}
+		bus.Dispatch(evt, LogTopic)
 
 		for _, s := range sinks {
 			if _, err := s.out.Write(append(data, '\n')); err != nil {
-				bus.Dispatch(eventbus.Event{SinkError, fmt.Errorf("error writing to sink %s: %v", src.name, err)}, ErrorTopic)
+				newError(bus, SinkError{fmt.Errorf("error writing to sink %s: %v", src.name, err)})
 			}
 		}
 	}

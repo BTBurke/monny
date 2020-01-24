@@ -25,7 +25,8 @@ func NewTicker(d time.Duration, e *eventbus.EventBus, evt eventbus.EventType) {
 				}
 
 			case <-t.C:
-				e.Dispatch(eventbus.Event{EventType: evt})
+				evt, _ := eventbus.NewEvent(evt, nil)
+				e.Dispatch(evt)
 			}
 		}
 	}(ch, tick, evt)
