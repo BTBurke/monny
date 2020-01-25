@@ -10,8 +10,8 @@ var _ CounterI = &WindowedCounter{}
 
 // CounterI is the basic interface for a counter that returns its current value and adds new observations
 type CounterI interface {
-	Value() float64
-	Add(i int)
+	Value() int
+	Add(i uint)
 	Reset()
 }
 
@@ -19,17 +19,17 @@ type CounterI interface {
 type Counter struct {
 	start    time.Time
 	duration time.Duration
-	value    int64
+	value    int
 }
 
 // Value returns the current value of the counter
-func (c *Counter) Value() float64 {
-	return float64(c.value)
+func (c *Counter) Value() int {
+	return c.value
 }
 
 // Add will increase the current count by i
-func (c *Counter) Add(i int) {
-	c.value += int64(i)
+func (c *Counter) Add(i uint) {
+	c.value += int(i)
 }
 
 // Reset sets the value of the counter to zero
@@ -65,26 +65,25 @@ type WindowedCounter struct {
 }
 
 // Value returns the current value of the counter in the most recent window
-func (c *WindowedCounter) Value() float64 {
+func (c *WindowedCounter) Value() int {
 	now := time.Now().UTC()
 	end := c.current.start.Add(c.current.duration)
 
 	// check if the current window has closed, if so return 0
 	switch {
 	case now.After(end) && c.current.duration >= 0:
-		return float64(0)
+		return 0
 	default:
 		return c.current.Value()
 	}
 }
 
 // Add will increment the current counter value within the window by i
-func (c *WindowedCounter) Add(i int) {
+func (c *WindowedCounter) Add(i uint) {
 	now := time.Now().UTC()
 	end := c.current.start.Add(c.current.duration)
-
 	switch {
-	case now.After(end) || c.current.duration == 0:
+	case now.Before(end) || c.current.duration == 0:
 		c.current.Add(i)
 	default:
 		c.hist = append(c.hist, *c.current)
@@ -130,13 +129,13 @@ type ConcurrentCounter struct {
 	c  *Counter
 }
 
-func (c *ConcurrentCounter) Value() float64 {
+func (c *ConcurrentCounter) Value() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.c.Value()
 }
 
-func (c *ConcurrentCounter) Add(i int) {
+func (c *ConcurrentCounter) Add(i uint) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.c.Add(i)
@@ -160,13 +159,13 @@ type ConcurrentWindowedCounter struct {
 	c  *WindowedCounter
 }
 
-func (c *ConcurrentWindowedCounter) Value() float64 {
+func (c *ConcurrentWindowedCounter) Value() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.c.Value()
 }
 
-func (c *ConcurrentWindowedCounter) Add(i int) {
+func (c *ConcurrentWindowedCounter) Add(i uint) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.c.Add(i)
