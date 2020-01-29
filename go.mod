@@ -4,6 +4,7 @@ go 1.13
 
 require (
 	github.com/cenkalti/backoff v2.2.1+incompatible
+	github.com/go-logfmt/logfmt v0.5.0
 	github.com/go-yaml/yaml v2.1.0+incompatible
 	github.com/golang/protobuf v1.3.2
 	github.com/spf13/pflag v1.0.5

@@ -58,10 +58,17 @@ func NewCounter() *Counter {
 // after the duration has elapsed and keeps track of the history of counts in each interval over time.  Note that if
 // no observations are added during a window, the history will not keep track of 0 values so there may be gaps in the
 // the complete timeline.  Use NewWindowedCounter to initialize a windowed counter.  If you instatiate this as an empty
-// struct it will act like a monotonically increasing counter without windowing.
+// struct it will act like a monotonically increasing counter without windowing.  You can then set MaxHistory to the number
+// of previous counters to retain in the history or set it as a MaxHistoryDuration which will keep only history going back
+// as far as the duration you set.  Note that using MaxHistory may keep old values for a long time if the counter is only
+// sparsely updated.  When using MaxHistoryDuration, those old counters will be removed if they are older than the duration.
+// You can also use both at once, since MaxHistoryDuration is applied first, then can be further restricted to the most recent
+// MaxHistory values.
 type WindowedCounter struct {
-	hist    []Counter
-	current *Counter
+	hist               []Counter
+	current            *Counter
+	MaxHistory         int
+	MaxHistoryDuration time.Duration
 }
 
 // Value returns the current value of the counter in the most recent window
@@ -86,7 +93,7 @@ func (c *WindowedCounter) Add(i uint) {
 	case now.Before(end) || c.current.duration == 0:
 		c.current.Add(i)
 	default:
-		c.hist = append(c.hist, *c.current)
+		c.hist = newHistory(append(c.hist, *c.current), c.MaxHistory, c.MaxHistoryDuration)
 		c.current = &Counter{start: time.Now().UTC(), duration: c.current.duration}
 		c.current.Add(i)
 	}
@@ -98,16 +105,36 @@ func (c *WindowedCounter) History() []Counter {
 	end := c.current.start.Add(c.current.duration)
 	switch {
 	case now.After(end) || c.current.duration == 0:
-		return append(c.hist, *c.current)
+		return newHistory(append(c.hist, *c.current), c.MaxHistory, c.MaxHistoryDuration)
 	default:
-		return c.hist
+		return newHistory(c.hist, c.MaxHistory, c.MaxHistoryDuration)
 	}
 }
 
 // HistoryInclusive will return the history of all counters, including the current value even if the window
 // is still open on the current counter
 func (c *WindowedCounter) HistoryInclusive() []Counter {
-	return append(c.hist, *c.current)
+	return newHistory(append(c.hist, *c.current), c.MaxHistory, c.MaxHistoryDuration)
+}
+
+// filters the history based on both MaxHistoryDuration and MaxHistory
+func newHistory(hist []Counter, max int, maxduration time.Duration) []Counter {
+	if max == 0 && maxduration == 0 {
+		return hist
+	}
+	if max > 0 && len(hist) > max {
+		hist = hist[len(hist)-max:]
+	}
+	if maxduration > 0 {
+		c := []Counter{}
+		for _, h := range hist {
+			if time.Now().UTC().Sub(h.start) <= maxduration {
+				c = append(c, h)
+			}
+		}
+		return c
+	}
+	return hist
 }
 
 // Reset will clear the current counters history and start a new zero-valued counter with the same window duration
