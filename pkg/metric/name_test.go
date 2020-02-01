@@ -63,3 +63,17 @@ func TestAddAnnotation(t *testing.T) {
 		})
 	}
 }
+
+func TestNameFrom(t *testing.T) {
+	base := NewName("test", map[string]string{"a": "b", "c": "d"})
+	exp := NewName("test", map[string]string{"a": "b", "c": "d", "e": "f", "g": ""})
+
+	n1 := NewName("test", map[string]string{"a": "b", "c": "d"})
+	n2 := NewNameFrom(n1)
+	n2.AddMetadata(map[string]string{"e": "f"})
+	n2.AddAnnotation("g")
+
+	assert.Equal(t, base, n1)
+	assert.Equal(t, exp, n2)
+
+}

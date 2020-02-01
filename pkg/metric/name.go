@@ -85,3 +85,11 @@ func MarshalText(m metadata) ([]byte, error) {
 	b.Write([]byte("]"))
 	return b.Bytes(), nil
 }
+
+func NewNameFrom(n Name) Name {
+	copiedMD := make(map[string]string)
+	for k, v := range n.md {
+		copiedMD[k] = v
+	}
+	return NewName(n.name, copiedMD)
+}
