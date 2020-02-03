@@ -1,11 +1,13 @@
 package stat
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 	"testing"
 	"time"
 
+	"github.com/BTBurke/monny/pkg/metric"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -56,6 +58,117 @@ func TestLimitCalc(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			assert.InDelta(t, tc.exp, calculateLimit(mean(values), variance(values, mean(values)), 0.25, 3.0, tc.sensitivity, tc.direction), 0.00001)
+		})
+	}
+}
+
+func TestMetric(t *testing.T) {
+	n, _ := NewLogNormalTest(metric.NewName("test_latency", nil), WithLogNormalStatistic(DefaultLogNormalEWMA()))
+	est := n.sub[0].(*TestStatistic)
+	est.current = 3.2222
+	est.limit = 4.1111
+	exp := map[string]float64{
+		"test_latency[strategy=ewma type=estimator value=current]": 3.2222,
+		"test_latency[strategy=ewma type=estimator value=limit]":   4.1111,
+	}
+	out := n.Metric()
+	assert.Equal(t, exp, out)
+}
+
+func TestEWMAEstimator(t *testing.T) {
+	gen := func(length int, mean float64) []float64 {
+		return randNorm(length, mean, 1.0, logNormalTransform)
+	}
+	series := make([]float64, 0)
+	series = append(append(series, gen(100, 5.2983)...), gen(300, 5.7038)...)
+
+	est, _ := NewLogNormalTest(metric.NewName("test", nil), WithLogNormalStatistic(DefaultLogNormalEWMA()))
+	ewma := est.sub[0].(*TestStatistic)
+	for i, s := range series {
+		if err := ewma.Record(s); err != nil {
+			t.Fail()
+		}
+		if i == 51 {
+			assert.Equal(t, TestingUCL, ewma.State())
+		}
+	}
+	assert.Equal(t, UCLTrip, ewma.State())
+}
+
+// Measures the average number of samples to detect shifts in the mean. Test cases are represented as an increase
+// in the mean as a multiple of the standard deviation.
+func BenchmarkEWMA(b *testing.B) {
+	// mean shifts as a multiple of the standard deviation
+	tt := []float64{3, 2.5, 2.0, 1.8, 1.6, 1.4, 1.2, 1.0, 0.8, 0.6, 0.4, 0.2, 0.1, 0.05}
+	for _, tc := range tt {
+		b.Run(fmt.Sprintf("%0.2fσ", tc), func(b *testing.B) {
+			samps := 0
+			for i := 0; i < b.N; i++ {
+				mean := 5.2983
+				stdev := 1.0
+
+				r := rand.New(rand.NewSource(time.Now().UnixNano()))
+				next := func() float64 {
+					return math.Exp(r.NormFloat64()*stdev + (mean + tc*stdev))
+				}
+
+				initial := randNorm(100, mean, stdev, logNormalTransform)
+				e, _ := NewLogNormalTest(metric.NewName("asn_benchmark", nil), WithLogNormalStatistic(DefaultLogNormalEWMA()))
+				est := e.sub[0].(*TestStatistic)
+				for _, obs := range initial {
+					if err := est.Record(obs); err != nil {
+						b.Fail()
+					}
+				}
+				s := 0
+				for est.State() != UCLTrip && s <= 10000 {
+					s++
+					if err := est.Record(next()); err != nil {
+						b.Fail()
+					}
+				}
+				samps += s
+			}
+			b.ReportMetric(float64(samps)/float64(b.N), "samples(avg)")
+		})
+	}
+}
+
+// Measures the average number of samples to detect shifts in the mean. Test cases are represented as an increase
+// in the mean as a multiple of the standard deviation.
+func BenchmarkShewart(b *testing.B) {
+	// mean shifts as a multiple of the standard deviation
+	tt := []float64{3, 2.5, 2.0, 1.8, 1.6, 1.4, 1.2, 1.0, 0.8, 0.6, 0.4, 0.2, 0.1, 0.05}
+	for _, tc := range tt {
+		b.Run(fmt.Sprintf("%0.2fσ", tc), func(b *testing.B) {
+			samps := 0
+			for i := 0; i < b.N; i++ {
+				mean := 5.2983
+				stdev := 1.0
+
+				r := rand.New(rand.NewSource(time.Now().UnixNano()))
+				next := func() float64 {
+					return math.Exp(r.NormFloat64()*stdev + (mean + tc*stdev))
+				}
+
+				initial := randNorm(100, mean, stdev, logNormalTransform)
+				e, _ := NewLogNormalTest(metric.NewName("asn_benchmark", nil), WithLogNormalStatistic(DefaultLogNormalShewart()))
+				est := e.sub[0].(*TestStatistic)
+				for _, obs := range initial {
+					if err := est.Record(obs); err != nil {
+						b.Fail()
+					}
+				}
+				s := 0
+				for est.State() != UCLTrip && s <= 10000 {
+					s++
+					if err := est.Record(next()); err != nil {
+						b.Fail()
+					}
+				}
+				samps += s
+			}
+			b.ReportMetric(float64(samps)/float64(b.N), "samples(avg)")
 		})
 	}
 }
