@@ -10,27 +10,14 @@ import (
 
 type TestStatistic struct {
 	name        string
-	window      int
 	lambda      float64
 	k           float64
 	limit       float64
-	series      *metric.Series
+	series      metric.SeriesRecorder
 	fsm         *fsm.Machine
 	current     float64
-	EWMA0       float64
-	variance0   float64
 	sensitivity float64
-	// transform will apply an initial transformation to the observed value before calculating the statistic
-	// e.g., apply ln(observation) if values are expected to be log-normally distributed
-	transform func(float64) float64
-	// meanFunc calculates the mean based on the assumed PDF of the observations
-	meanFunc func([]float64) float64
-	// varFunc calculates the variance based on the assumed PDF of the observations
-	varFunc func([]float64, float64) float64
-}
-
-func (e *TestStatistic) SetTransform(transform func(float64) float64) {
-	e.transform = transform
+	pdf         PDF
 }
 
 func (e *TestStatistic) SetSensitivty(sensitivity float64) {
@@ -57,9 +44,7 @@ func (e *TestStatistic) Limit() float64 {
 }
 
 func (e *TestStatistic) Record(o float64) error {
-	if e.transform != nil {
-		o = e.transform(o)
-	}
+	o = e.pdf.Transform(o)
 	if math.IsNaN(o) || math.IsInf(o, 1) || math.IsInf(o, -1) {
 		return fmt.Errorf("transform(value) is not defined")
 	}
@@ -74,11 +59,7 @@ func (e *TestStatistic) Record(o float64) error {
 		}
 		// if forced into reset with existing observations, start series recording over again
 		if e.series.Count() > 0 {
-			series, err := metric.NewSeries(e.window)
-			if err != nil {
-				return fmt.Errorf("failed to create new series for estimator: %v", err)
-			}
-			e.series = series
+			e.series.Reset()
 			// re-record the current observation after reseting the series
 			e.series.Record(o)
 		}
@@ -98,29 +79,29 @@ func (e *TestStatistic) Record(o float64) error {
 			}
 		}
 	case UCLInitial:
-		if e.series.Count() >= e.window {
+		if e.series.Count() >= e.series.Capacity() {
 			values := e.series.Values()
-			e.EWMA0 = e.meanFunc(values)
-			e.variance0 = e.varFunc(values, e.EWMA0)
-			if e.EWMA0 > 0.0 && e.variance0 > 0.0 {
+			mean := e.pdf.Mean(values)
+			variance := e.pdf.Variance(values, mean)
+			if mean > 0.0 && variance > 0.0 {
 				if err := e.fsm.Transition(TestingUCL); err != nil {
 					return err
 				}
-				e.current = e.EWMA0
-				e.limit = calculateLimit(e.EWMA0, e.variance0, e.lambda, e.k, e.sensitivity, 1)
+				e.current = mean
+				e.limit = calculateLimit(mean, variance, e.lambda, e.k, e.sensitivity, 1)
 			}
 		}
 	case LCLInitial:
-		if e.series.Count() >= e.window {
+		if e.series.Count() >= e.series.Capacity() {
 			values := e.series.Values()
-			e.EWMA0 = e.meanFunc(values)
-			e.variance0 = e.varFunc(values, e.EWMA0)
-			if e.EWMA0 > 0.0 && e.variance0 > 0.0 {
+			mean := e.pdf.Mean(values)
+			variance := e.pdf.Variance(values, mean)
+			if mean > 0.0 && variance > 0.0 {
 				if err := e.fsm.Transition(TestingLCL); err != nil {
 					return err
 				}
-				e.current = e.EWMA0
-				e.limit = calculateLimit(e.EWMA0, e.variance0, e.lambda, e.k, e.sensitivity, -1)
+				e.current = mean
+				e.limit = calculateLimit(mean, variance, e.lambda, e.k, e.sensitivity, -1)
 			}
 		}
 	}
@@ -152,11 +133,7 @@ func (e *TestStatistic) calculateCurrent(o float64) {
 // force it to collect new baseline observations before entering testing phase
 func (e *TestStatistic) Transition(state fsm.State, resetSeries bool) error {
 	if resetSeries {
-		series, err := metric.NewSeries(e.window)
-		if err != nil {
-			return fmt.Errorf("failed to reset series on transition: %v", err)
-		}
-		e.series = series
+		e.series.Reset()
 	}
 	return e.fsm.Transition(state)
 }
@@ -187,106 +164,26 @@ func calculateLimit(mean float64, variance float64, lambda float64, k float64, s
 	}
 }
 
-func meanNormal(values []float64) float64 {
-	if len(values) == 0 {
-		return 0.0
-	}
-	s := 0.0
-	for _, v := range values {
-		s = s + v
-	}
-	return s / float64(len(values))
-}
-
-func varianceNormal(values []float64, mean float64) float64 {
-	s := 0.0
-	for _, v := range values {
-		s = s + math.Pow(v-mean, 2)
-	}
-	return s / float64(len(values)-1)
-}
-
-func meanPoisson(values []float64) float64 {
-	// MLE for Poisson mean is the same as Normal, mean of the observed sample
-	return meanNormal(values)
-}
-
-func variancePoisson(values []float64, mean float64) float64 {
-	// Poisson variance also equal to lambda, so return the MLE of lambda already calculated from
-	// the observed values
-	return mean
-}
-
-// PDF is the assumed probability density function of the (possibly transformed) observations.  For Log-Normal, observations
-// are first transformed as Log(obs), which is then normally distributed.  Other statistics may be better fit by a Poisson
-// distribution, such as windowed counts of observations like 400/500 errors or server load (requests/time period)
-type PDF int
-
-const (
-	Normal PDF = iota
-	LogNormal
-	Poisson
-)
-
-func (p PDF) getMeanFunc() func([]float64) float64 {
-	switch p {
-	case Normal, LogNormal:
-		return meanNormal
-	default:
-		return meanPoisson
-	}
-}
-
-func (p PDF) getVarFunc() func([]float64, float64) float64 {
-	switch p {
-	case Normal, LogNormal:
-		return varianceNormal
-	default:
-		return variancePoisson
-	}
-}
-
-func (p PDF) getTransform() func(float64) float64 {
-	switch p {
-	case LogNormal:
-		return math.Log
-	default:
-		return nil
-	}
-}
-
-func (p PDF) String() string {
-	switch p {
-	case Normal:
-		return "Normal"
-	case LogNormal:
-		return "Log-Normal"
-	default:
-		return "Poisson"
-	}
-}
-
 // NewEWMATestStatistic returns a new EWMA test statistic.  Transform can be used to apply a function to each raw observation before
 // it is tested by the statistic.  e.g., for log-normally distributed observations, the transform would be math.Log(observation)
-func NewEWMATestStatistic(name string, window int, lambda float64, k float64, pdf PDF) (*TestStatistic, error) {
-	series, err := metric.NewSeries(window)
+func NewEWMATestStatistic(name string, lambda float64, k float64, pdf PDF) (*TestStatistic, error) {
+
+	series, err := pdf.NewSeries()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create estimator: %v", err)
+		return nil, fmt.Errorf("unable to create EWMA test statistic for %s: %v", pdf.String(), err)
 	}
+
 	machine, err := newMachine(UCLInitial)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create estimator FSM: %v", err)
 	}
 	return &TestStatistic{
 		name:        name,
-		window:      window,
 		k:           k,
 		lambda:      lambda,
 		series:      series,
 		fsm:         machine,
 		sensitivity: 0.0,
-		transform:   pdf.getTransform(),
-		meanFunc:    pdf.getMeanFunc(),
-		varFunc:     pdf.getVarFunc(),
+		pdf:         pdf,
 	}, nil
 }

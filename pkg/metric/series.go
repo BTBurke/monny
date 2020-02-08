@@ -12,6 +12,8 @@ type SeriesRecorder interface {
 	Record(observation float64)
 	Count() int
 	Name() string
+	Capacity() int
+	Reset()
 }
 
 type Series struct {
@@ -21,6 +23,19 @@ type Series struct {
 }
 
 type SeriesOption func(s *Series) error
+
+// Reset clears all current values saved in the series and resets the counter to zero, reusing the same backing slice
+// to reduce allocations
+func (s *Series) Reset() {
+	s.count = 0
+	for i := range s.values {
+		s.values[i] = 0.0
+	}
+}
+
+func (s *Series) Capacity() int {
+	return len(s.values)
+}
 
 // Values returns a copy of the current values in the series in temporal order from oldest to most recent
 func (s *Series) Values() []float64 {

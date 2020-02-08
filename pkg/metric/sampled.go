@@ -59,6 +59,22 @@ func NewSampledSeries(capacity int, sampleWindow time.Duration, transform func([
 	return ss, func() { ss.done <- true; ss.wg.Wait() }, nil
 }
 
+// Reset clears all previous recorded values and the count to zero.  This reuses the same backing slice to reduce
+// allocations.  It does not attempt to adjust the timing of the sample window, which may cause the initial value to
+// be garbage depending on when reset is called within a sample window. For sufficiently large series, this should not matter.
+func (s *SampledSeries) Reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.obs = make([]float64, 0)
+	s.s.Reset()
+}
+
+func (s *SampledSeries) Capacity() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.s.Capacity()
+}
+
 func (s *SampledSeries) Record(obs float64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

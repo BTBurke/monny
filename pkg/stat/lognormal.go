@@ -2,7 +2,6 @@ package stat
 
 import (
 	"fmt"
-	"math"
 
 	"github.com/BTBurke/monny/pkg/fsm"
 	"github.com/BTBurke/monny/pkg/metric"
@@ -47,9 +46,6 @@ func NewLogNormalTest(name metric.Name, opts ...LogNormalOption) (*LogNormalTest
 
 // WithLogNormalStatistic will use a custom estimator.  If this is used, no default estimators will be used.
 func WithLogNormalStatistic(e *TestStatistic) LogNormalOption {
-	if e.transform == nil {
-		e.SetTransform(math.Log)
-	}
 	return func(l *LogNormalTest) error {
 		l.sub = append(l.sub, e)
 		return nil
@@ -58,13 +54,13 @@ func WithLogNormalStatistic(e *TestStatistic) LogNormalOption {
 
 // DefaultLogNormalEWMA constructs a default EWMA estimator with window 50 observations, lambda 0.25, k 3.0, log normal distribution
 func DefaultLogNormalEWMA() *TestStatistic {
-	est, _ := NewEWMATestStatistic("ewma", 50, .25, 3.0, LogNormal)
+	est, _ := NewEWMATestStatistic("ewma", .25, 3.0, NewLogNormal(50))
 	return est
 }
 
 // DefaultLogNormalShewart constructs a default EWMA estimator for Shewart with window 50 observations, lambda 1.0, k 3.0, log normal distribution
 func DefaultLogNormalShewart() *TestStatistic {
-	est, _ := NewEWMATestStatistic("shewart", 50, 1.0, 3.0, LogNormal)
+	est, _ := NewEWMATestStatistic("shewart", 1.0, 3.0, NewLogNormal(50))
 	return est
 }
 
