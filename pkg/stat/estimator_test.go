@@ -32,12 +32,14 @@ func randNorm(length int, mean float64, stddev float64, transform func(float64) 
 var logNormalTransform func(float64) float64 = math.Exp
 
 func TestMean(t *testing.T) {
-	assert.Equal(t, mean([]float64{1.0, 1.0, 1.0, 2.0, 2.0, 2.0}), 1.5)
+	assert.Equal(t, meanNormal([]float64{1.0, 1.0, 1.0, 2.0, 2.0, 2.0}), 1.5)
+	assert.Equal(t, meanPoisson([]float64{1.0, 1.0, 1.0, 2.0, 2.0, 2.0}), 1.5)
 }
 
 func TestVariance(t *testing.T) {
 	values := []float64{1.0, 1.0, 1.0, 2.0, 2.0, 2.0}
-	assert.Equal(t, variance(values, 1.5), 0.3)
+	assert.Equal(t, varianceNormal(values, 1.5), 0.3)
+	assert.Equal(t, variancePoisson(values, 1.5), 1.5)
 }
 
 func TestLimitCalc(t *testing.T) {
@@ -57,7 +59,7 @@ func TestLimitCalc(t *testing.T) {
 	}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.InDelta(t, tc.exp, calculateLimit(mean(values), variance(values, mean(values)), 0.25, 3.0, tc.sensitivity, tc.direction), 0.00001)
+			assert.InDelta(t, tc.exp, calculateLimit(meanNormal(values), varianceNormal(values, meanNormal(values)), 0.25, 3.0, tc.sensitivity, tc.direction), 0.00001)
 		})
 	}
 }

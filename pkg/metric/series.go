@@ -5,6 +5,15 @@ import (
 	"math"
 )
 
+var _ SeriesRecorder = &Series{}
+
+type SeriesRecorder interface {
+	Values() []float64
+	Record(observation float64)
+	Count() int
+	Name() string
+}
+
 type Series struct {
 	name   Name
 	count  int
