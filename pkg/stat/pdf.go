@@ -59,7 +59,7 @@ func (p *Poisson) String() string {
 	return "poisson"
 }
 
-func NewPoissonPDF(capacity int, sampleWindow time.Duration, strategy func([]float64) float64) *Poisson {
+func NewPoisson(capacity int, sampleWindow time.Duration, strategy func([]float64) float64) *Poisson {
 	return &Poisson{
 		capacity: capacity,
 		window:   sampleWindow,
@@ -87,9 +87,7 @@ func (p *LogNormal) Transform(obs float64) float64 {
 	return math.Log(obs)
 }
 
-func (p *LogNormal) Done() {
-	return
-}
+func (p *LogNormal) Done() {}
 
 func (p *LogNormal) String() string {
 	return "log-normal"

@@ -17,6 +17,7 @@ type SampledSeries struct {
 	transform func([]float64) float64
 	done      chan bool
 	wg        sync.WaitGroup
+	direct    bool
 }
 
 func NewSampledSeries(capacity int, sampleWindow time.Duration, transform func([]float64) float64, opts ...SeriesOption) (*SampledSeries, func(), error) {
@@ -24,39 +25,48 @@ func NewSampledSeries(capacity int, sampleWindow time.Duration, transform func([
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not create sampled series: %v", err)
 	}
-	if sampleWindow == 0 {
-		return nil, nil, fmt.Errorf("sampled series window must be greater than zero")
-	}
 
-	ss := &SampledSeries{
-		s:         s,
-		t:         time.NewTicker(sampleWindow),
-		obs:       make([]float64, 0),
-		transform: transform,
-		done:      make(chan bool),
-	}
-	ss.wg.Add(1)
-	go func(s *SampledSeries) {
-		defer s.wg.Done()
-		for {
-			select {
-			case <-s.t.C:
-				s.mu.Lock()
-				if len(s.obs) == 0 {
-					s.s.Record(0.0)
-				} else {
-					s.s.Record(s.transform(s.obs))
-					s.obs = make([]float64, 0)
-				}
-				s.mu.Unlock()
-			case <-s.done:
-				s.t.Stop()
-				return
-			}
+	if sampleWindow > 0 {
+		ss := &SampledSeries{
+			s:         s,
+			t:         time.NewTicker(sampleWindow),
+			obs:       make([]float64, 0),
+			transform: transform,
+			done:      make(chan bool),
 		}
-	}(ss)
-
-	return ss, func() { ss.done <- true; ss.wg.Wait() }, nil
+		ss.wg.Add(1)
+		go func(s *SampledSeries) {
+			defer s.wg.Done()
+			for {
+				select {
+				case <-s.t.C:
+					s.mu.Lock()
+					if len(s.obs) == 0 {
+						s.s.Record(0.0)
+					} else {
+						s.s.Record(s.transform(s.obs))
+						s.obs = make([]float64, 0)
+					}
+					s.mu.Unlock()
+				case <-s.done:
+					s.t.Stop()
+					return
+				}
+			}
+		}(ss)
+		return ss, func() { ss.done <- true; ss.wg.Wait() }, nil
+	} else {
+		// if duration is zero, use direct mode where observations are immediately written to the underlying
+		// series storage.  The transform in this case is a no op.
+		ss := &SampledSeries{
+			s:         s,
+			t:         nil,
+			transform: nil,
+			done:      nil,
+			direct:    true,
+		}
+		return ss, func() {}, nil
+	}
 }
 
 // Reset clears all previous recorded values and the count to zero.  This reuses the same backing slice to reduce
@@ -78,7 +88,11 @@ func (s *SampledSeries) Capacity() int {
 func (s *SampledSeries) Record(obs float64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.obs = append(s.obs, obs)
+	if s.direct {
+		s.s.Record(obs)
+	} else {
+		s.obs = append(s.obs, obs)
+	}
 }
 
 func (s *SampledSeries) Values() []float64 {
