@@ -22,4 +22,7 @@ dist/monny: $(shell find . -name '*.go' -type f) .make-proto
 > mkdir -p $(@D)
 > go build -o dist/monny ./cmd/monny/main.go
 
+pkg/stat/kconst_gen.go:
+> go generate ./...
+
 .PHONY: test
