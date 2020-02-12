@@ -11,7 +11,7 @@ import (
 type TestStatistic struct {
 	name    string
 	lambda  float64
-	k       *K
+	k       K
 	limit   float64
 	series  metric.SeriesRecorder
 	fsm     *fsm.Machine
@@ -133,7 +133,7 @@ func (e *TestStatistic) Transition(state fsm.State, resetSeries bool) error {
 // calculateLimit will determine the UCL or LCL limit (UCL => direction +1, LCL => direction -1)
 // sensitivity is a float within +/- 1.0 that adjusts limits to create a more senstive alarm if sensitivity > 0.0 or less
 // sensitive if < 0.0
-func calculateLimit(mean float64, variance float64, lambda float64, k *K, direction int) float64 {
+func calculateLimit(mean float64, variance float64, lambda float64, k K, direction int) float64 {
 	estimatorVariance := (lambda / (2.0 - lambda)) * variance
 
 	kc, err := k.Calculate()
@@ -152,7 +152,7 @@ func calculateLimit(mean float64, variance float64, lambda float64, k *K, direct
 
 // NewEWMATestStatistic returns a new EWMA test statistic.  Transform can be used to apply a function to each raw observation before
 // it is tested by the statistic.  e.g., for log-normally distributed observations, the transform would be math.Log(observation)
-func NewEWMATestStatistic(name string, lambda float64, type1Error float64, pdf PDF) (*TestStatistic, error) {
+func NewEWMATestStatistic(name string, lambda float64, k K, pdf PDF) (*TestStatistic, error) {
 	series, err := pdf.NewSeries()
 	if err != nil {
 		return nil, fmt.Errorf("unable to create EWMA test statistic for %s: %v", pdf.String(), err)
@@ -163,7 +163,7 @@ func NewEWMATestStatistic(name string, lambda float64, type1Error float64, pdf P
 	}
 	return &TestStatistic{
 		name:   name,
-		k:      &K{type1Error},
+		k:      k,
 		lambda: lambda,
 		series: series,
 		fsm:    machine,

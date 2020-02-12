@@ -91,13 +91,13 @@ func WithLogNormalStatistic(e *TestStatistic) LogNormalOption {
 
 // DefaultLogNormalEWMA constructs a default EWMA estimator with window 50 observations, lambda 0.25, k 3.0, log normal distribution
 func DefaultLogNormalEWMA() *TestStatistic {
-	est, _ := NewEWMATestStatistic("ewma", .25, 0.05, NewLogNormal(50))
+	est, _ := NewEWMATestStatistic("ewma", .25, &KErrorRate{0.05}, NewLogNormal(50))
 	return est
 }
 
 // DefaultLogNormalShewart constructs a default EWMA estimator for Shewart with window 50 observations, lambda 1.0, k 3.0, log normal distribution
 func DefaultLogNormalShewart() *TestStatistic {
-	est, _ := NewEWMATestStatistic("shewart", 1.0, 0.05, NewLogNormal(50))
+	est, _ := NewEWMATestStatistic("shewart", 1.0, &KErrorRate{0.05}, NewLogNormal(50))
 	return est
 }
 

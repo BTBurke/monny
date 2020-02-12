@@ -16,7 +16,7 @@ func TestK(t *testing.T) {
 		{e: .001, k: 6.2983},
 	}
 	for _, tc := range tt {
-		k := K{tc.e}
+		k := KErrorRate{tc.e}
 		kk, err := k.Calculate()
 		assert.NoError(t, err)
 		assert.InDelta(t, tc.k, kk, .02)

@@ -12,5 +12,6 @@ require (
 	github.com/stretchr/testify v1.3.0
 	github.com/stvp/rollbar v0.5.1
 	golang.org/x/net v0.0.0-20191126235420-ef20fe5d7933
+	gonum.org/v1/gonum v0.6.2
 	google.golang.org/grpc v1.25.1
 )

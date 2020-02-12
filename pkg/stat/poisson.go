@@ -93,14 +93,14 @@ func WithPoissonStatistic(e *TestStatistic) PoissonOption {
 // DefaultPoissonEWMA constructs a default EWMA estimator with window 50 observations, lambda 0.25, k 3.0, poisson distribution with
 // a sample window of 15 seconds
 func DefaultPoissonEWMA() *TestStatistic {
-	est, _ := NewEWMATestStatistic("ewma", .25, 5.5, NewPoisson(50, 15*time.Second, metric.SampleSum))
+	est, _ := NewEWMATestStatistic("ewma", .25, &FixedK{5.5}, NewPoisson(50, 15*time.Second, metric.SampleSum))
 	return est
 }
 
 // DefaultPoissonShewart constructs a default EWMA estimator for Shewart with window 50 observations, lambda 1.0, k 3.0, poisson distribution with
 // a sample window of 15 seconds
 func DefaultPoissonShewart() *TestStatistic {
-	est, _ := NewEWMATestStatistic("shewart", 1.0, 5.5, NewPoisson(50, 15*time.Second, metric.SampleSum))
+	est, _ := NewEWMATestStatistic("shewart", 1.0, &FixedK{5.5}, NewPoisson(50, 15*time.Second, metric.SampleSum))
 	return est
 }
 

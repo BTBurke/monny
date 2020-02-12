@@ -74,7 +74,7 @@ func TestLimitCalc(t *testing.T) {
 	}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.InDelta(t, tc.exp, calculateLimit(meanNormal(values), varianceNormal(values, meanNormal(values)), 0.25, &K{.05}, tc.direction), 0.00001)
+			assert.InDelta(t, tc.exp, calculateLimit(meanNormal(values), varianceNormal(values, meanNormal(values)), 0.25, &KErrorRate{.05}, tc.direction), 0.00001)
 		})
 	}
 }
@@ -133,7 +133,7 @@ func TestPoissonEWMAEstimator(t *testing.T) {
 	series := make([]float64, 0)
 	series = append(append(series, gen(100, 5)...), gen(600, 10)...)
 
-	testStat, _ := NewEWMATestStatistic("ewma", 0.25, 0.05, NewPoisson(50, 10*time.Millisecond, metric.SampleMax))
+	testStat, _ := NewEWMATestStatistic("ewma", 0.25, &KErrorRate{0.05}, NewPoisson(50, 10*time.Millisecond, metric.SampleMax))
 	est, _ := NewPoissonTest(metric.NewName("test", nil), WithPoissonStatistic(testStat))
 	ewma := est.sub[0].(*TestStatistic)
 	for i, s := range series {
@@ -243,7 +243,7 @@ func BenchmarkPoissonEWMA(b *testing.B) {
 
 				initial := randPoisson(50, lambda)
 
-				stat, _ := NewEWMATestStatistic("ewma", 0.25, .05, NewPoisson(50, 0, nil))
+				stat, _ := NewEWMATestStatistic("ewma", 0.25, &KErrorRate{.05}, NewPoisson(50, 0, nil))
 				e, _ := NewPoissonTest(metric.NewName("asn_benchmark", nil), WithPoissonStatistic(stat))
 				est := e.sub[0].(*TestStatistic)
 				for _, obs := range initial {
@@ -309,12 +309,12 @@ func BenchmarkLogNormalError(b *testing.B) {
 func BenchmarkPoissonError(b *testing.B) {
 	tt := []func() Test{
 		func() Test {
-			stat, _ := NewEWMATestStatistic("ewma", 0.25, 0.05, NewPoisson(100, 0, metric.SampleSum))
+			stat, _ := NewEWMATestStatistic("ewma", 0.25, &KErrorRate{0.05}, NewPoisson(100, 0, metric.SampleSum))
 			est, _ := NewPoissonTest(metric.NewName("ewma", nil), WithPoissonStatistic(stat))
 			return est
 		},
 		func() Test {
-			stat, _ := NewEWMATestStatistic("shewart", 1.0, 0.05, NewPoisson(100, 0, metric.SampleSum))
+			stat, _ := NewEWMATestStatistic("shewart", 1.0, &KErrorRate{0.05}, NewPoisson(100, 0, metric.SampleSum))
 			est, _ := NewPoissonTest(metric.NewName("shewart", nil), WithPoissonStatistic(stat))
 			return est
 		},
