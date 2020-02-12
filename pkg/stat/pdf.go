@@ -15,19 +15,30 @@ var _ PDF = &Poisson{}
 // are first transformed as Log(obs), which is then normally distributed.  Other statistics may be better fit by a Poisson
 // distribution, such as windowed counts of observations like 400/500 errors or server load (requests/time period)
 type PDF interface {
+	// Mean is a MLE of the (potentially transformed) distribution mean based on observed samples
 	Mean(obs []float64) float64
+	// Variance is the MLE of the distribution variance
 	Variance(obs []float64, mean float64) float64
+	// NewSeries returns a SeriesRecorder appropriate for the distribution type
 	NewSeries() (metric.SeriesRecorder, error)
+	// Transform will transform raw observations to the underlying tested distribution (e.g. LogNormal -> Normal)
 	Transform(obs float64) float64
+	// K returns the k value for upper and lower control limits based on the type of distribution and desired Type I error rate
+	K() (float64, error)
+	// Done is a cleanup function that tears down any running go routines necessary for maintaining series state
 	Done()
+	// String implements stringer
 	String() string
 }
 
+// Poisson is a possion modeled process, such as request error rates, etc.  It would be useful for monitoring any metric
+// in which the result is countable over a window, such as number of 400 responses for an API per minute, etc.
 type Poisson struct {
 	capacity int
 	window   time.Duration
 	strategy func([]float64) float64
 	done     func()
+	k        K
 }
 
 func (p *Poisson) Mean(obs []float64) float64 {
@@ -51,6 +62,10 @@ func (p *Poisson) Transform(obs float64) float64 {
 	return obs
 }
 
+func (p *Poisson) K() (float64, error) {
+	return p.k.CalculateP()
+}
+
 func (p *Poisson) Done() {
 	p.done()
 }
@@ -59,16 +74,22 @@ func (p *Poisson) String() string {
 	return "poisson"
 }
 
-func NewPoisson(capacity int, sampleWindow time.Duration, strategy func([]float64) float64) *Poisson {
+// NewPoisson returns a new Poisson distribution which bootstraps the test using capacity number of samples and combines
+// observations occuring within each sampleWindow using the strategy given, such as SampleSum, SampleAvg, SampleMax, etc.
+// K can be set to maintain a particular error rate or as a fixed value.
+func NewPoisson(capacity int, sampleWindow time.Duration, strategy func([]float64) float64, k K) *Poisson {
 	return &Poisson{
 		capacity: capacity,
 		window:   sampleWindow,
 		strategy: strategy,
+		k:        k,
 	}
 }
 
+// LogNormal returns a new log normal distribution for metrics where performance has a long-tail nature, such as latency.
 type LogNormal struct {
 	capacity int
+	k        K
 }
 
 func (p *LogNormal) Mean(obs []float64) float64 {
@@ -87,14 +108,23 @@ func (p *LogNormal) Transform(obs float64) float64 {
 	return math.Log(obs)
 }
 
+func (p *LogNormal) K() (float64, error) {
+	return p.k.CalculateLN()
+}
+
 func (p *LogNormal) Done() {}
 
 func (p *LogNormal) String() string {
 	return "log-normal"
 }
 
-func NewLogNormal(capacity int) *LogNormal {
-	return &LogNormal{capacity}
+// NewLogNormal returns a log normal estimator bootstrapped from capacity initial observations where K is set to approximate
+// a desired Type I error rate
+func NewLogNormal(capacity int, k K) *LogNormal {
+	return &LogNormal{
+		capacity: capacity,
+		k:        k,
+	}
 }
 
 func meanNormal(values []float64) float64 {

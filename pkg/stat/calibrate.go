@@ -51,14 +51,13 @@ func main() {
 		name     string
 		keyA     string
 		keyB     string
-		pdf      func() stat.PDF
-		testfunc func(*results, func() stat.PDF, float64)
+		testfunc func(*results, float64)
 		kstart   float64
 		kstop    float64
 		kstep    float64
 	}{
-		{name: "Log Normal", keyA: "LogNormalA", keyB: "LogNormalB", pdf: func() stat.PDF { return stat.NewLogNormal(Cap) }, testfunc: errorRateLN, kstart: 5.0, kstop: 7.0, kstep: 0.1},
-		{name: "Poisson", keyA: "PoissonA", keyB: "PoissonB", pdf: func() stat.PDF { return stat.NewPoisson(Cap, 0, metric.SampleSum) }, testfunc: errorRateP, kstart: 5.0, kstop: 7.0, kstep: 0.1},
+		{name: "Log Normal", keyA: "LogNormalA", keyB: "LogNormalB", testfunc: errorRateLN, kstart: 5.0, kstop: 7.0, kstep: 0.1},
+		{name: "Poisson", keyA: "PoissonA", keyB: "PoissonB", testfunc: errorRateP, kstart: 5.0, kstop: 7.0, kstep: 0.1},
 	}
 
 	c := make(map[string]float64)
@@ -69,7 +68,7 @@ func main() {
 		res := newResults()
 		for k := cc.kstart; k <= cc.kstop; k += cc.kstep {
 			wg.Add(1)
-			go cc.testfunc(res, cc.pdf, k)
+			go cc.testfunc(res, k)
 		}
 		wg.Wait()
 
@@ -102,16 +101,16 @@ func main() {
 	os.Exit(0)
 }
 
-func errorRateLN(results *results, pdf func() stat.PDF, k float64) {
+func errorRateLN(results *results, k float64) {
 	defer wg.Done()
 	errors := 0
 	for i := 0; i < Loops; i++ {
-		s, err := stat.NewEWMATestStatistic("ewma", Lambda, stat.NewFixedK(k), pdf())
+		s, err := stat.NewEWMAStatistic("ewma", Lambda, stat.NewLogNormal(50, stat.KFixed(k)))
 		if err != nil {
 			log.Fatalf("unexpected error contructing test statistic: %v", err)
 		}
 
-		t, err := stat.NewLogNormalTest(metric.NewName("calibrate", nil), stat.WithLogNormalStatistic(s))
+		t, err := stat.NewLogNormalTest(metric.NewName("calibrate", nil), stat.WithStatistic(s))
 		if err != nil {
 			log.Fatalf("unexpected error constructing test statistic: %v", err)
 		}
@@ -136,16 +135,16 @@ func errorRateLN(results *results, pdf func() stat.PDF, k float64) {
 	}
 }
 
-func errorRateP(results *results, pdf func() stat.PDF, k float64) {
+func errorRateP(results *results, k float64) {
 	defer wg.Done()
 	errors := 0
 	for i := 0; i < Loops; i++ {
-		s, err := stat.NewEWMATestStatistic("ewma", Lambda, stat.NewFixedK(k), pdf())
+		s, err := stat.NewEWMAStatistic("ewma", Lambda, stat.NewPoisson(50, 0, nil, stat.KFixed(k)))
 		if err != nil {
 			log.Fatalf("unexpected error contructing test statistic: %v", err)
 		}
 
-		t, err := stat.NewPoissonTest(metric.NewName("calibrate", nil), stat.WithPoissonStatistic(s))
+		t, err := stat.NewPoissonTest(metric.NewName("calibrate", nil), stat.WithStatistic(s))
 		if err != nil {
 			log.Fatalf("unexpected error constructing test statistic: %v", err)
 		}
